@@ -2,4 +2,4 @@
 var name = "%s";
 
 // Exec
-return document.getElementById("register").innerText.trim() == name;
+Sizzle("#register")[0].innerText.trim() == name;

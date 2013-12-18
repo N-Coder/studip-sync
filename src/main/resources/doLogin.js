@@ -3,10 +3,8 @@ var username = "%s";
 var password = "%s";
 
 // Exec
-try {
-	document.getElementById("username").value = username;
-	document.getElementById("password").value = password;
-	document.getElementById("login").submit();
-} catch (e) {
-	alert(e);
-}
+Sizzle("#username")[0].value = username;
+Sizzle("#password")[0].value = password;
+
+Sizzle("#login")[0].onsubmit = "";
+Sizzle("#login")[0].submit();

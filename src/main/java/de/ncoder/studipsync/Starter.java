@@ -1,187 +1,143 @@
 package de.ncoder.studipsync;
 
-import com.google.common.util.concurrent.SettableFuture;
-import de.ncoder.studipsync.LocalStorage.StorageListener;
 import de.ncoder.studipsync.data.Download;
-import de.ncoder.studipsync.data.Seminar;
-import de.ncoder.studipsync.swt.BrowserShell;
-import de.ncoder.studipsync.swt.SWTBrowserAdapter;
-import org.eclipse.swt.widgets.Display;
+import de.ncoder.studipsync.data.LocalStorage;
+import de.ncoder.studipsync.data.LoginData;
+import de.ncoder.studipsync.studip.UIAdapter;
+import de.ncoder.studipsync.studip.js.BrowserAdapter;
+import de.ncoder.studipsync.studip.js.BrowserListener;
+import de.ncoder.studipsync.studip.js.StudipBrowser;
+import de.ncoder.studipsync.studip.js.impl.EnvJSBrowserAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.sql.Date;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.Executors;
 
-import static de.ncoder.studipsync.Values.PAGE_DOWNLOADS;
-import static de.ncoder.studipsync.Values.PAGE_DOWNLOADS_LATEST;
+import static de.ncoder.studipsync.Loggers.LOG_NAVIGATE;
 
 public class Starter {
-
     private static final Path cachePath = new File(System.getProperty("user.dir") + "/cache.zip").toPath();
-    private static final Path latestPath = cachePath.resolve("latest");
-    private static final Logger log = LoggerFactory.getLogger("MAIN");
+    private static final Path latestPath = new File(System.getProperty("user.dir") + "/latest/").toPath();
+    private static final Path cookiesPath = new File(System.getProperty("user.dir") + "/cookies.json").toPath();
+    private static final Logger LOG_MAIN = LoggerFactory.getLogger("MAIN");
 
     public static void main(String[] args) throws Exception {
-        final SettableFuture<StudipAdapter> adapterFuture = SettableFuture.create();
-        log.info("Started");
-
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                Display display = new Display();
-                try {
-                    BrowserShell shell = new BrowserShell(display);
-                    adapterFuture.set(new StudipAdapter(new SWTBrowserAdapter(shell.getBrowser()), shell, cachePath));
-                    log.info("Initiated");
-                    shell.open();
-                    log.info("Opened");
-                    while (!shell.isDisposed()) {
-                        if (!display.readAndDispatch()) {
-                            display.sleep();
-                        }
-                    }
-                } catch (IOException | URISyntaxException e) {
-                    adapterFuture.setException(e);
-                } finally {
-                    display.dispose();
-                }
-            }
-        }, "UI").start();
-
-        final StudipAdapter adapter = adapterFuture.get();
+        final Syncer syncer = getEnvJSSyncer();
         try {
-            adapter.getStorage().registerListener(new StorageListener() {
+            syncer.getStorage().registerListener(new LocalStorage.StorageListener() {
                 @Override
-                public void fileUpdated(Path updated) {
-                    // FIXME resolve latest (updated.getRoot()==null)
-                    // latestPath.resolve(updated.getName(0).relativize(updated));
-                    Path latest = latestPath.resolve(updated.toString());
+                public void fileDeleted(Download download, Path child) {
+                }
+
+                @Override
+                public void fileUpdated(Download download, Path child) {
                     try {
+                        Path latest = latestPath.resolve(child.toString());
                         Files.createDirectories(latest.getParent());
-                        Files.copy(updated, latest);
+                        Files.copy(child, latest);
                     } catch (IOException e) {
-                        log.error("Couldn't cache updated", e);
+                        LOG_MAIN.error("Couldn't publish updated file", e);
                     }
                 }
             });
-            adapter.init();
-            run(adapter);
-            log.info("Finished");
+            LOG_MAIN.info("Started");
+            syncer.sync();
+            LOG_MAIN.info("Finished");
         } catch (Exception e) {
-            log.error("Uncaught exception", e);
+            LOG_MAIN.error("Uncaught exception", e);
         } finally {
-            adapter.close();
+            syncer.close();
         }
     }
 
-    // TODO parallelize
-
-    public static void run(StudipAdapter adapter) throws Exception {
-        List<Seminar> seminars = adapter.parseSeminars();
-        for (Seminar seminar : seminars) {
-            try {
-                handleSeminar(adapter, seminar, false);
-            } catch (Exception e) {
-                log.error("Could not work on Seminar " + seminar, e);
-            }
-        }
-        // System.out.println(adapter.getStorage().printInfo());
-    }
-
-    public static void handleSeminar(StudipAdapter adapter, Seminar seminar, boolean forceComplete) throws Exception {
-        adapter.selectSeminar(seminar);
-        boolean maybeUnclean = false;
-        List<Download> downloads = adapter.parseDownloads(PAGE_DOWNLOADS, true);
-        for (Download download : downloads) {
-            if (download.getLevel() == 0) {
-                Path file;
-                if (forceComplete) {
-                    adapter.getStorage().deleteDownload(download);
-                    file = adapter.download(download, false);
-                } else if (download.hasNewest()) {
-                    maybeUnclean = true;
-                    file = adapter.download(download, true);
-                } else {
-                    maybeUnclean = true;
-                    file = null;
-                }
-                if (file != null) {
-                    adapter.getStorage().storeDownload(download, file);
-                }
-            }
-        }
-        if (checkDownloadsUnclean(adapter, seminar)) {
-            if (maybeUnclean) {
-                handleSeminar(adapter, seminar, true);
-            } else {
-                throw new IllegalStateException("Could not synchronize Seminar " + seminar + ". Local data is different from online data after full download.");
-            }
-        }
-    }
-
-    public static boolean checkDownloadsUnclean(StudipAdapter adapter, Seminar seminar) throws CancellationException, TimeoutException, InterruptedException, ExecutionException, IOException {
-        final List<Download> downloads = adapter.parseDownloads(PAGE_DOWNLOADS_LATEST, false);
-        if (downloads.isEmpty()) {
-            return false;
-        }
-        final List<Path> locals = new LinkedList<>();
-        Path storagePath = adapter.getStorage().getStoragePath(seminar);
-        if (!Files.exists(storagePath)) {
-            log.warn("Seminar " + seminar + " has no local data in " + storagePath);
-            return true;
-        }
-        Files.walkFileTree(storagePath, new SimpleFileVisitor<Path>() {
+    public static Syncer getEnvJSSyncer() throws IOException, URISyntaxException {
+        LocalStorage storage = LocalStorage.openZip(cachePath);
+        BrowserAdapter browser = new EnvJSBrowserAdapter();
+        UIAdapter ui = new UIAdapter() {
             @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                locals.add(file);
-                if (locals.size() > downloads.size()) {
-                    return FileVisitResult.TERMINATE;
-                }
-                return FileVisitResult.CONTINUE;
+            public LoginData requestLoginData() {
+//                Console console = System.console();
+//                console.printf("Username:");
+//                String username = console.readLine();
+//                char password[] = console.readPassword("Password: ");
+//                return new LoginData(username, password);
+
+//                JPasswordField passwordField = new JPasswordField(10);
+//                passwordField.setEchoChar('#');
+//                JOptionPane.showMessageDialog(
+//                        null,
+//                        passwordField,
+//                        "Enter password",
+//                        JOptionPane.OK_OPTION);
+
+                return new LoginData("user", "test".toCharArray());
+
+            }
+
+            @Override
+            public void close() {
+
+            }
+        };
+        browser.addBrowserListener(new BrowserListener() {
+            @Override
+            public void pageLoaded(String url) {
+                LOG_NAVIGATE.info(url);
             }
         });
-        if (locals.size() != downloads.size()) {
-            log.warn("Seminar " + seminar + " has " + locals.size() + " local files != " + downloads.size() + " online files.");
-            return true;
-        }
 
-        for (Download download : downloads) {
-            // String name = download.getPath();
-            List<Path> local = new LinkedList<>();
-            for (Path l : locals) {
-                // FIXME check path instead name (names may be equal in different folders)
-                if (l.getName(l.getNameCount() - 1).toString().equals(download.getFileName())) {
-                    if (!local.isEmpty()) {
-                        log.debug("Local files " + local + " and " + l + " match " + download + "!");
-                        //return true; // TODO add assume clean for conflicting files
-                    }
-                    local.add(l);
-
-                    Date localLastMod = new Date(Files.getLastModifiedTime(l).toMillis());
-                    if (!localLastMod.after(download.getLastModified())) {
-                        log.warn("Local file " + l + "(" + localLastMod + ") older than online Version " + download + "(" + download.getLastModified() + ")!");
-                        return true;
-                    }
-                }
-            }
-            if (local.isEmpty()) {
-                log.warn("No local file matching " + download + " (~" + download.getFileName() + ")!");
-                return true;
-            }
-        }
-        return false;
+        return new Syncer(
+                new StudipBrowser(
+                        browser,
+                        ui,
+                        cookiesPath
+                ),
+                storage,
+                Executors.newCachedThreadPool()
+        );
     }
+
+
+//    public static Syncer getSWTSyncer() throws ExecutionException, InterruptedException {
+//        final SettableFuture<Syncer> syncerFuture = SettableFuture.create();
+//        new Thread(new Runnable() {
+//            @Override
+//            public void run() {
+//                Display display = new Display();
+//                try {
+//                    BrowserShell shell = new BrowserShell(display);
+//                    LocalStorage storage = LocalStorage.openZip(cachePath);
+//                    BrowserAdapter browser = new SWTBrowserAdapter(shell.getBrowser());
+//                    syncerFuture.set(
+//                            new Syncer(
+//                                    new StudipBrowser(
+//                                            browser,
+//                                            shell,
+//                                            cookiesPath
+//                                    ),
+//                                    storage,
+//                                    Executors.newCachedThreadPool()
+//                            )
+//                    );
+//                    shell.open();
+//                    LOG_MAIN.info("Opened");
+//                    while (!shell.isDisposed()) {
+//                        if (!display.readAndDispatch()) {
+//                            display.sleep();
+//                        }
+//                    }
+//                } catch (IOException | URISyntaxException e) {
+//                    syncerFuture.setException(e);
+//                } finally {
+//                    display.dispose();
+//                }
+//            }
+//        }, "UI").start();
+//        return syncerFuture.get();
+//    }
 }
