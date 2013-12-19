@@ -7,10 +7,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
-import org.json.simple.JSONObject;
-
 public class Seminar implements Serializable {
-    private static final Map<URL, Seminar> instances = new HashMap<URL, Seminar>();
+    private static final Map<URL, Seminar> instances = new HashMap<>();
 
     private final URL url;
     private final Map<String, String> urlParams;
@@ -30,26 +28,14 @@ public class Seminar implements Serializable {
         return instances.get(url);
     }
 
-    public static Seminar getSeminar(JSONObject json) {
-        try {
-            return getSeminar(new URL((String) json.get("url")));
-        } catch (MalformedURLException e) {
-            throw new RuntimeException(e);
-        }
+    public static Seminar getSeminar(String url, String name, String description) throws MalformedURLException {
+        Seminar seminar = getSeminar(new URL(url));
+        seminar.setFullName(name);
+        seminar.setDescription(description);
+        return seminar;
     }
 
     // ------------------------------------------------------------------------
-
-    public void update(JSONObject json) throws MalformedURLException {
-        String name = (String) json.get("name");
-        if (name != null) {
-            setFullName(name);
-        }
-        String description = (String) json.get("description");
-        if (description != null) {
-            setDescription(description);
-        }
-    }
 
     public String getHash() {
         String hash = urlParams.get("auswahl");

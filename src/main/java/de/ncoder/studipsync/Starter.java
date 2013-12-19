@@ -4,21 +4,19 @@ import de.ncoder.studipsync.data.Download;
 import de.ncoder.studipsync.data.LocalStorage;
 import de.ncoder.studipsync.data.LoginData;
 import de.ncoder.studipsync.studip.UIAdapter;
-import de.ncoder.studipsync.studip.js.BrowserAdapter;
-import de.ncoder.studipsync.studip.js.BrowserListener;
-import de.ncoder.studipsync.studip.js.StudipBrowser;
-import de.ncoder.studipsync.studip.js.impl.EnvJSBrowserAdapter;
+import de.ncoder.studipsync.studip.parsed.StudipBrowser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.swing.*;
+import java.io.Console;
 import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.Executors;
-
-import static de.ncoder.studipsync.Loggers.LOG_NAVIGATE;
 
 public class Starter {
     private static final Path cachePath = new File(System.getProperty("user.dir") + "/cache.zip").toPath();
@@ -57,46 +55,42 @@ public class Starter {
 
     public static Syncer getEnvJSSyncer() throws IOException, URISyntaxException {
         LocalStorage storage = LocalStorage.openZip(cachePath);
-        BrowserAdapter browser = new EnvJSBrowserAdapter();
         UIAdapter ui = new UIAdapter() {
             @Override
             public LoginData requestLoginData() {
-//                Console console = System.console();
-//                console.printf("Username:");
-//                String username = console.readLine();
-//                char password[] = console.readPassword("Password: ");
-//                return new LoginData(username, password);
-
-//                JPasswordField passwordField = new JPasswordField(10);
-//                passwordField.setEchoChar('#');
-//                JOptionPane.showMessageDialog(
-//                        null,
-//                        passwordField,
-//                        "Enter password",
-//                        JOptionPane.OK_OPTION);
-
-                return new LoginData("user", "test".toCharArray());
-
+                Console console = System.console();
+                if (console != null) {
+                    console.printf("Username:");
+                    String username = console.readLine();
+                    char password[] = console.readPassword("Password: ");
+                    return new LoginData(username, password);
+                } else {
+                    JPasswordField passwordField = new JPasswordField(10);
+                    passwordField.setEchoChar('#');
+                    JOptionPane.showMessageDialog(
+                            null,
+                            passwordField,
+                            "Password: ",
+                            JOptionPane.OK_OPTION);
+                    return new LoginData("fink13", passwordField.getPassword());
+                }
             }
 
             @Override
             public void close() {
-
             }
         };
-        browser.addBrowserListener(new BrowserListener() {
+        StudipBrowser browser = new StudipBrowser(ui, cookiesPath);
+        browser.addNavigationListener(new StudipBrowser.NavigationListener() {
             @Override
-            public void pageLoaded(String url) {
-                LOG_NAVIGATE.info(url);
+            public void navigated(URL url) {
+                //Files.copy(new ByteArrayInputStream((document.baseUri() + "\n" + document.toString()).getBytes()), new File("history/history" + (loadCount++) + ".html").toPath(), StandardCopyOption.REPLACE_EXISTING);
+                //LOG_NAVIGATE.info(url.toString());
             }
         });
 
         return new Syncer(
-                new StudipBrowser(
-                        browser,
-                        ui,
-                        cookiesPath
-                ),
+                browser,
                 storage,
                 Executors.newCachedThreadPool()
         );

@@ -13,14 +13,13 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.sql.Date;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 import java.util.concurrent.locks.ReentrantLock;
 
+import static de.ncoder.studipsync.Loggers.LOG_EXECUTOR;
 import static de.ncoder.studipsync.Loggers.LOG_SYNCER;
 import static de.ncoder.studipsync.Values.PAGE_DOWNLOADS;
 import static de.ncoder.studipsync.Values.PAGE_DOWNLOADS_LATEST;
@@ -38,35 +37,47 @@ public class Syncer {
     }
 
     public synchronized void sync() throws ExecutionException, InterruptedException {
+        final List<Seminar> seminars;
+        final List<Future<Void>> executions = new ArrayList<>();
+
+        //Access seminars
         browserLock.lock();
         adapter.init();
         adapter.doLogin();
-        List<Seminar> seminars;
         try {
             seminars = adapter.parseSeminars();
         } finally {
             browserLock.unlock();
         }
-        List<Callable<Void>> tasks = new LinkedList<>();
 
         //Find seminars
         for (final Seminar seminar : seminars) {
-            tasks.add(new Callable<Void>() {
+            executions.add(executor.submit(new Callable<Void>() {
                 @Override
                 public Void call() throws Exception {
-                    syncSeminar(seminar, false);
+                    LOG_EXECUTOR.info(this + " started");
+                    List<Future<Void>> executions = executor.invokeAll(syncSeminar(seminar, false));
+                    for (Future<Void> exec : executions) {
+                        exec.get();
+                    }
+                    LOG_EXECUTOR.info(this + " finished");
                     return null;
                 }
-            });
+
+                @Override
+                public String toString() {
+                    return "[Parse " + seminar.getID() + "]";
+                }
+            }));
         }
 
         //Do sync
         ExecutionException exception = null;
-        List<Future<Void>> executions = executor.invokeAll(tasks);
         for (Future<Void> exec : executions) {
             try {
                 exec.get();
             } catch (ExecutionException e) {
+                e.printStackTrace();
                 if (exception == null) {
                     exception = e;
                 } else {
@@ -74,71 +85,99 @@ public class Syncer {
                 }
             }
         }
+        executor.shutdown();
+        LOG_EXECUTOR.info("Tasks left " + executor);
+        executor.awaitTermination(1, TimeUnit.MINUTES);
 
         if (exception != null) {
-            throw exception;
+            //throw exception;
         }
     }
 
-    public void syncSeminar(Seminar seminar, boolean forceAbsolute) throws ExecutionException, IOException, InterruptedException {
-        boolean isAbsolute = true;
-        List<Callable<Void>> tasks = new LinkedList<>();
+    public List<Callable<Void>> syncSeminar(final Seminar seminar, boolean forceAbsolute) throws ExecutionException, IOException, InterruptedException {
+        List<Callable<Void>> executions = new LinkedList<>();
+        final CountDownLatch counter;
+        boolean hasDiff = false;
 
         //Find downloads
         browserLock.lock();
         try {
             adapter.selectSeminar(seminar);
             List<Download> downloads = adapter.parseDownloads(PAGE_DOWNLOADS, true);
+            counter = new CountDownLatch(downloads.size());
             for (final Download download : downloads) {
                 if (download.getLevel() == 0) {
                     final InputStream src;
-                    final boolean isDiff;
+                    final boolean downloadDiff;
                     if (forceAbsolute) {
                         //Absolute forced
-                        isDiff = false;
-                        src = adapter.startDownload(download, isDiff);
+                        downloadDiff = false;
+                        src = adapter.startDownload(download, false);
                     } else if (download.isChanged()) {
                         //Changed data
-                        isDiff = true;
-                        src = adapter.startDownload(download, isDiff);
+                        downloadDiff = true;
+                        src = adapter.startDownload(download, true);
                     } else {
                         //Nothing changed
-                        isDiff = true;
+                        downloadDiff = true;
                         src = null;
                     }
                     if (src != null) {
-                        tasks.add(new Callable<Void>() {
+                        executions.add(new Callable<Void>() {
                             @Override
                             public Void call() throws Exception {
-                                storage.store(download, src, isDiff);
-                                return null;
+                                LOG_EXECUTOR.info(this + " started");
+                                try {
+                                    storage.store(download, src, downloadDiff);
+                                    LOG_EXECUTOR.info(this + " finished");
+                                    return null;
+                                } finally {
+                                    counter.countDown();
+                                }
+                            }
+
+                            @Override
+                            public String toString() {
+                                return "[Download " + (downloadDiff ? "DIF" : "ABS") + " " + download.getFileName() + "@" + seminar.getID() + "]";
                             }
                         });
                     }
-                    if (isDiff) {
-                        isAbsolute = false;
+                    if (downloadDiff) {
+                        hasDiff = true;
                     }
+                } else {
+                    counter.countDown();
                 }
             }
         } finally {
             browserLock.unlock();
         }
 
-        //Do download
-        //TODO pull up to sync()
-        List<Future<Void>> executions = executor.invokeAll(tasks);
-        for (Future<Void> e : executions) {
-            e.get();
-        }
-
         //Check downloads
-        if (!isSeminarInSync(seminar)) {
-            if (isAbsolute) {
-                throw new IllegalStateException("Could not synchronize Seminar " + seminar + ". Local data is different from online data after full download.");
-            } else {
-                syncSeminar(seminar, true);
+        final boolean isAbsolute = !hasDiff; //final Version of hasDiff
+        executions.add(new Callable<Void>() {
+            @Override
+            public Void call() throws Exception {
+                LOG_EXECUTOR.info(this + " started");
+                counter.await();
+                if (!isSeminarInSync(seminar)) {
+                    if (isAbsolute) {
+                        throw new IllegalStateException("Could not synchronize Seminar " + seminar + ". Local data is different from online data after full download.");
+                    } else {
+                        syncSeminar(seminar, true);
+                    }
+                }
+                LOG_EXECUTOR.info(this + " finished");
+                return null;
             }
-        }
+
+            @Override
+            public String toString() {
+                return "[Check " + seminar.getID() + "]";
+            }
+        });
+
+        return executions;
     }
 
     public boolean isSeminarInSync(Seminar seminar) throws ExecutionException, IOException {

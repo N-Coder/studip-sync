@@ -2,7 +2,6 @@ package de.ncoder.studipsync.data;
 
 import de.ncoder.studipsync.Loggers;
 import de.ncoder.studipsync.Values;
-import org.json.simple.JSONObject;
 
 import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
@@ -59,38 +58,15 @@ public class Download implements Serializable {
         return instances.get(url);
     }
 
-    public static Download getDownload(JSONObject json) {
-        try {
-            return getDownload(new URL((String) json.get("url")));
-        } catch (MalformedURLException e) {
-            throw new RuntimeException(e);
-        }
+    public static Download getDownload(String url, String name, String lastModified, String size) throws MalformedURLException {
+        Download download = getDownload(new URL(url));
+        download.setDisplayName(name);
+        download.setLastModified(parseDate(lastModified));
+        download.setSize(parseSize(size));
+        return download;
     }
 
     // ------------------------------------------------------------------------
-
-    public void update(JSONObject json) {
-        long size = parseSize((String) json.get("size"));
-        if (size >= 0) {
-            setSize(size);
-        }
-        Date lastModified = parseDate((String) json.get("lastModified"));
-        if (lastModified != null) {
-            setLastModified(lastModified);
-        }
-        String displayName = (String) json.get("displayName");
-        if (displayName != null) {
-            setDisplayName(displayName);
-        }
-        String displayDescription = (String) json.get("displayDescription");
-        if (displayDescription != null) {
-            setDisplayDescription(displayDescription);
-        }
-        int level = ((Number) json.get("level")).intValue();
-        if (level >= 0) {
-            setLevel(level);
-        }
-    }
 
     private static long parseSize(String string) {
         if (string == null || string.isEmpty()) {
