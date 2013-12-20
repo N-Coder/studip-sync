@@ -1,5 +1,7 @@
 package de.ncoder.studipsync.data;
 
+import de.ncoder.studipsync.studip.StudipException;
+
 import java.io.Serializable;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -28,11 +30,18 @@ public class Seminar implements Serializable {
         return instances.get(url);
     }
 
-    public static Seminar getSeminar(String url, String name, String description) throws MalformedURLException {
-        Seminar seminar = getSeminar(new URL(url));
-        seminar.setFullName(name);
-        seminar.setDescription(description);
-        return seminar;
+    public static Seminar getSeminar(String url, String name, String description) throws StudipException {
+        try {
+            Seminar seminar = getSeminar(new URL(url));
+            seminar.setFullName(name);
+            seminar.setDescription(description);
+            return seminar;
+        } catch (MalformedURLException e) {
+            StudipException ex = new StudipException("Illegal URL " + url, e);
+            ex.put("seminar.url", url);
+            ex.put("seminar.name", name);
+            throw ex;
+        }
     }
 
     // ------------------------------------------------------------------------

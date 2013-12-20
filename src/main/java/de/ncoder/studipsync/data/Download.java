@@ -2,6 +2,7 @@ package de.ncoder.studipsync.data;
 
 import de.ncoder.studipsync.Loggers;
 import de.ncoder.studipsync.Values;
+import de.ncoder.studipsync.studip.StudipException;
 
 import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
@@ -13,7 +14,7 @@ import java.util.*;
 
 // TODO externalize parsing relevant Strings
 // TODO make URL non final, but immodifyable
-// TODO improve parent hierachy
+// TODO improve parent hierarchy
 public class Download implements Serializable {
     private static final Map<URL, Download> instances = new HashMap<>();
 
@@ -33,22 +34,18 @@ public class Download implements Serializable {
     private String displayDescription = "";
 
     private Download(URL url) {
-        try {
-            Map<String, String> urlParams = URLUtils.extractUrlParameters(url);
-            isChanged = "true".equals(urlParams.get("newestOnly"));
+        Map<String, String> urlParams = URLUtils.extractUrlParameters(url);
+        isChanged = "true".equals(urlParams.get("newestOnly"));
 
-            // Newest
-            urlParams.put("newestOnly", "true");
-            diffUrl = URLUtils.setUrlParameters(url, urlParams);
+        // Newest
+        urlParams.put("newestOnly", "true");
+        diffUrl = URLUtils.setUrlParameters(url, urlParams);
 
-            // General
-            urlParams.put("newestOnly", "false");
-            this.url = URLUtils.setUrlParameters(url, urlParams);
+        // General
+        urlParams.put("newestOnly", "false");
+        this.url = URLUtils.setUrlParameters(url, urlParams);
 
-            this.urlParams = Collections.unmodifiableMap(urlParams);
-        } catch (MalformedURLException e) {
-            throw new RuntimeException(e);
-        }
+        this.urlParams = Collections.unmodifiableMap(urlParams);
     }
 
     public static Download getDownload(URL url) {
@@ -58,12 +55,19 @@ public class Download implements Serializable {
         return instances.get(url);
     }
 
-    public static Download getDownload(String url, String name, String lastModified, String size) throws MalformedURLException {
-        Download download = getDownload(new URL(url));
-        download.setDisplayName(name);
-        download.setLastModified(parseDate(lastModified));
-        download.setSize(parseSize(size));
-        return download;
+    public static Download getDownload(String url, String name, String lastModified, String size) throws StudipException {
+        try {
+            Download download = getDownload(new URL(url));
+            download.setDisplayName(name);
+            download.setLastModified(parseDate(lastModified));
+            download.setSize(parseSize(size));
+            return download;
+        } catch (MalformedURLException e) {
+            StudipException ex = new StudipException("Illegal URL " + url, e);
+            ex.put("download.url", url);
+            ex.put("download.name", name);
+            throw ex;
+        }
     }
 
     // ------------------------------------------------------------------------
@@ -104,8 +108,8 @@ public class Download implements Serializable {
         return urlParams.containsKey("folder_id");
     }
 
-    private static final String[] urlOldChars = new String[]{" ", ":", "ä", "ö", "ü", "Ä", "Ö", "Ü", "ß"};
-    private static final String[] urlNewChars = new String[]{"_", "", "ae", "oe", "ue", "Ae", "Oe", "Ue", "ss"};
+    private static final String[] urlOldChars = new String[]{" ", ":", "ä", "ö", "ü", "Ä", "Ö", "Ü", "ß", "(", ")"};
+    private static final String[] urlNewChars = new String[]{"_", "", "ae", "oe", "ue", "Ae", "Oe", "Ue", "ss", "", ""};
 
     public String getFileName() {
         String name = urlParams.get("file_name");

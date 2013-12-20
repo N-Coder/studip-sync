@@ -5,6 +5,7 @@ import de.ncoder.studipsync.data.LocalStorage;
 import de.ncoder.studipsync.data.LoginData;
 import de.ncoder.studipsync.studip.UIAdapter;
 import de.ncoder.studipsync.studip.parsed.StudipBrowser;
+import de.ncoder.studipsync.ui.LoginDialog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,7 +40,7 @@ public class Starter {
                         Files.createDirectories(latest.getParent());
                         Files.copy(child, latest);
                     } catch (IOException e) {
-                        LOG_MAIN.error("Couldn't publish updated file", e);
+                        //LOG_MAIN.error("Couldn't publish updated file", e);
                     }
                 }
             });
@@ -54,6 +55,8 @@ public class Starter {
     }
 
     public static Syncer getEnvJSSyncer() throws IOException, URISyntaxException {
+        LOG_MAIN.info("Sync to " + cachePath.toAbsolutePath());
+
         LocalStorage storage = LocalStorage.openZip(cachePath);
         UIAdapter ui = new UIAdapter() {
             @Override
@@ -65,14 +68,11 @@ public class Starter {
                     char password[] = console.readPassword("Password: ");
                     return new LoginData(username, password);
                 } else {
-                    JPasswordField passwordField = new JPasswordField(10);
-                    passwordField.setEchoChar('#');
-                    JOptionPane.showMessageDialog(
-                            null,
-                            passwordField,
-                            "Password: ",
-                            JOptionPane.OK_OPTION);
-                    return new LoginData("fink13", passwordField.getPassword());
+                    try {
+                        UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+                    } catch (Exception e) {
+                    }
+                    return new LoginDialog().getLoginData();
                 }
             }
 

@@ -5,30 +5,27 @@ import de.ncoder.studipsync.data.Seminar;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URISyntaxException;
 import java.util.List;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeoutException;
 
 public interface StudipAdapter {
-    void init() throws ExecutionException;
+    void init() throws StudipException;
 
     void close() throws IOException;
 
-    boolean doLogin() throws CancellationException, ExecutionException;
+    boolean doLogin() throws CancellationException, StudipException;
 
-    boolean isLoggedIn() throws ExecutionException;
+    boolean isLoggedIn();
 
-    void selectSeminar(Seminar seminar) throws ExecutionException;
+    void selectSeminar(Seminar seminar) throws StudipException;
 
-    boolean isSeminarSelected(Seminar seminar) throws ExecutionException;
+    boolean isSeminarSelected(Seminar seminar);
 
     Seminar getSelectedSeminar();
 
-    List<Seminar> parseSeminars() throws ExecutionException;
+    List<Seminar> parseSeminars() throws StudipException;
 
-    List<Download> parseDownloads(String downloadsUrl, boolean structured) throws ExecutionException;
+    List<Download> parseDownloads(String downloadsUrl, boolean structured) throws StudipException;
 
-    InputStream startDownload(Download download, boolean diffOnly) throws ExecutionException, IOException;
+    InputStream startDownload(Download download, boolean diffOnly) throws StudipException, IOException;
 }

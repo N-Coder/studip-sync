@@ -29,9 +29,10 @@ public class LoginData {
     }
 
     public void clean() {
-        //FIXME clean not called
         username = null;
-        Arrays.fill(password, ' ');
-        password = null;
+        if (password != null) {
+            Arrays.fill(password, ' ');
+            password = null;
+        }
     }
 }

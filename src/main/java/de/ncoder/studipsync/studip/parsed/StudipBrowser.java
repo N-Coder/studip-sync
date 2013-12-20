@@ -4,9 +4,11 @@ import de.ncoder.studipsync.data.Download;
 import de.ncoder.studipsync.data.LoginData;
 import de.ncoder.studipsync.data.Seminar;
 import de.ncoder.studipsync.studip.StudipAdapter;
+import de.ncoder.studipsync.studip.StudipException;
 import de.ncoder.studipsync.studip.UIAdapter;
 import org.jsoup.Connection;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.TextNode;
 import org.jsoup.select.Elements;
 
 import java.io.IOException;
@@ -21,7 +23,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.ExecutionException;
 
 import static de.ncoder.studipsync.Loggers.LOG_NAVIGATE;
 import static de.ncoder.studipsync.Loggers.LOG_SEMINARS;
@@ -41,7 +42,7 @@ public class StudipBrowser implements StudipAdapter {
     // --------------------------------LIFECYCLE-------------------------------
 
     @Override
-    public void init() throws ExecutionException {
+    public void init() throws StudipException {
         con = HttpConnection.connect(PAGE_COVER);
         navigate(PAGE_COVER);
     }
@@ -59,7 +60,7 @@ public class StudipBrowser implements StudipAdapter {
 
     private int loadCount = 0;
 
-    private void setDocument(Document document) {
+    private void setDocument(Document document) throws StudipException {
         this.document = document;
         try {
             URL url = new URL(document.baseUri());
@@ -67,43 +68,60 @@ public class StudipBrowser implements StudipAdapter {
                 listener.navigated(url);
             }
         } catch (MalformedURLException e) {
-            e.printStackTrace();
+            StudipException ex = new StudipException("Illegal URL " + document.baseUri(), e);
+            ex.put("studip.url", document.baseUri());
+            ex.put("studip.document", document);
+            throw ex;
         }
     }
 
-    protected void navigate(String url) throws ExecutionException {
-        con.url(url);
-        con.timeout((int) NAVIGATE_TIMEOUT);
+    protected void navigate(String url) throws StudipException {
         try {
-            setDocument(con.get());
-            //TODO store cookies
-            //cookies.putAll(con.request().cookies());
-        } catch (IOException e) {
-            throw new ExecutionException(e);
+            con.url(url);
+            con.timeout((int) NAVIGATE_TIMEOUT);
+            try {
+                setDocument(con.get());
+            } catch (IOException e) {
+                throw new StudipException("Can't navigate to " + url, e);
+            }
+        } catch (StudipException ex) {
+            ex.put("navigate.url", url);
+            ex.put("navigate.connection", con);
+            ex.put("navigate.document", document);
+            throw ex;
         }
     }
 
     @Override
-    public InputStream startDownload(Download download, boolean diffOnly) throws IOException, ExecutionException {
-        URL url;
-        if (diffOnly) {
-            url = download.getDiffUrl();
-        } else {
-            url = download.getFullUrl();
+    public InputStream startDownload(Download download, boolean diffOnly) throws IOException, StudipException {
+        try {
+            URL url;
+            if (diffOnly) {
+                url = download.getDiffUrl();
+            } else {
+                url = download.getFullUrl();
+            }
+            URLConnection urlCon = url.openConnection();
+            if (!(urlCon instanceof HttpURLConnection)) {
+                StudipException ex = new StudipException(new IllegalArgumentException("Can only download via http"));
+                ex.put("download.url", url);
+                ex.put("download.urlConnection", urlCon);
+                throw ex;
+            }
+            HttpURLConnection con = (HttpURLConnection) urlCon;
+            con.setRequestProperty("Cookie", HttpConnection.Response.getRequestCookieString(this.con.request().cookies()));
+            return con.getInputStream();
+        } catch (StudipException ex) {
+            ex.put("download.diffOnly", diffOnly);
+            ex.put("download.download", download);
+            throw ex;
         }
-        URLConnection urlCon = url.openConnection();
-        if (!(urlCon instanceof HttpURLConnection)) {
-            throw new ExecutionException(new IllegalStateException("Can only download via http"));
-        }
-        HttpURLConnection con = (HttpURLConnection) urlCon;
-        con.setRequestProperty("Cookie", HttpConnection.Response.getRequestCookieString(this.con.request().cookies()));
-        return con.getInputStream();
     }
 
     // --------------------------------LOG IN----------------------------------
 
     @Override
-    public boolean doLogin() throws CancellationException, ExecutionException {
+    public boolean doLogin() throws CancellationException, StudipException {
         try {
             navigate(PAGE_LOGIN);
             if (hasCookies()) {
@@ -127,43 +145,58 @@ public class StudipBrowser implements StudipAdapter {
                 return false;
             }
         } catch (IOException e) {
-            throw new ExecutionException(e);
+            //TODO Should cookie exceptions be suppressed?
+            StudipException ex = new StudipException(e);
+            ex.put("studip.cookiesPath", cookiesPath);
+            ex.put("studip.url", document == null ? "none" : document.baseUri());
+            throw ex;
         }
     }
 
-    protected void doLogin(LoginData login) throws ExecutionException {
-        con.url(
-                "https://studip.uni-passau.de/studip/index.php"
-        );
-        con.method(Connection.Method.POST);
-        con.timeout((int) NAVIGATE_TIMEOUT);
-
-        con.header("Origin", "https://studip.uni-passau.de");
-        con.header("Host", "studip.uni-passau.de");
-        con.header("Content-Type", "application/x-www-form-urlencoded");
-        con.header("Referer", "https://studip.uni-passau.de/studip/login.php");
-
-        con.data("username", login.getUsername());
-        con.data("password", new String(login.getPassword()));
-        con.data("challenge", document.getElementById("challenge").val());
-        con.data("login_ticket", document.getElementById("login_ticket").val());
-        con.data("response", document.getElementById("response").val());
-        con.data("resolution", "1366x768");
-        con.data("submitbtn", "");
+    protected void doLogin(LoginData login) throws StudipException {
         try {
-            setDocument(con.post());
-        } catch (IOException e) {
-            throw new ExecutionException(e);
+            con.url(
+                    "https://studip.uni-passau.de/studip/index.php"
+            );
+            con.method(Connection.Method.POST);
+            con.timeout((int) NAVIGATE_TIMEOUT);
+
+            con.header("Origin", "https://studip.uni-passau.de");
+            con.header("Host", "studip.uni-passau.de");
+            con.header("Content-Type", "application/x-www-form-urlencoded");
+            con.header("Referer", "https://studip.uni-passau.de/studip/login.php");
+
+            con.data("username", login.getUsername());
+            con.data("password", new String(login.getPassword()));
+            con.data("challenge", document.getElementById("challenge").val());
+            con.data("login_ticket", document.getElementById("login_ticket").val());
+            con.data("response", document.getElementById("response").val());
+            con.data("resolution", "1366x768");
+            con.data("submitbtn", "");
+            try {
+                //FIXME check for password leaks
+                setDocument(con.post());
+            } catch (IOException e) {
+                throw new StudipException("Can't login", e);
+            } finally {
+                login.clean();
+                con.data("password", "XXX");
+            }
+        } catch (StudipException ex) {
+            ex.put("navigate.url", con == null || con.request() == null ? "none" : con.request().url());
+            ex.put("navigate.connection", con);
+            ex.put("navigate.document", document);
+            throw ex;
         }
     }
 
     @Override
-    public boolean isLoggedIn() throws ExecutionException {
+    public boolean isLoggedIn() {
         Elements selected = document.select("#toolbar .toolbar_menu li:last-of-type a");
         return selected.size() == 1 && "Logout".equals(selected.get(0).text().trim());
     }
 
-    public void ensureLoggedIn() throws ExecutionException {
+    public void ensureLoggedIn() throws StudipException {
         while (!isLoggedIn()) {
             doLogin();
         }
@@ -172,15 +205,24 @@ public class StudipBrowser implements StudipAdapter {
     // --------------------------------SELECTED SEMINAR------------------------
 
     @Override
-    public void selectSeminar(Seminar seminar) throws ExecutionException {
-        navigate(String.format(PAGE_SELECT_SEMINAR, seminar.getHash()));
-        if (!isSeminarSelected(seminar)) {
-            throw new ExecutionException(new IllegalStateException("Could not select Seminar " + seminar));
+    public void selectSeminar(Seminar seminar) throws StudipException {
+        try {
+            navigate(String.format(PAGE_SELECT_SEMINAR, seminar.getHash()));
+            if (!isSeminarSelected(seminar)) {
+                StudipException ex = new StudipException("Could not select Seminar " + seminar);
+                ex.put("studip.url", document == null ? "none" : document.baseUri());
+                ex.put("studip.document", document);
+                throw ex;
+            }
+            if (currentSeminar != seminar) {
+                LOG_SEMINARS.info("Selected " + seminar);
+            }
+            currentSeminar = seminar;
+        } catch (StudipException ex) {
+            ex.put("studip.newSeminar", seminar);
+            ex.put("studip.currentSeminar", currentSeminar);
+            throw ex;
         }
-        if (currentSeminar != seminar) {
-            LOG_SEMINARS.info("Selected " + seminar);
-        }
-        currentSeminar = seminar;
     }
 
     @Override
@@ -189,12 +231,12 @@ public class StudipBrowser implements StudipAdapter {
     }
 
     @Override
-    public boolean isSeminarSelected(Seminar seminar) throws ExecutionException {
+    public boolean isSeminarSelected(Seminar seminar) {
         Elements selected = document.select("#register");
         return selected.size() == 1 && seminar.getFullName().equals(selected.get(0).text().trim());
     }
 
-    public void ensureCurrentSeminarSelected() throws ExecutionException {
+    public void ensureCurrentSeminarSelected() throws StudipException {
         while (!isSeminarSelected(currentSeminar)) {
             selectSeminar(currentSeminar);
         }
@@ -202,22 +244,23 @@ public class StudipBrowser implements StudipAdapter {
 
     // --------------------------------COOKIES---------------------------------
 
-    public void saveCookies() throws ExecutionException, IOException {
+    public void saveCookies() throws IOException {
         LOG_NAVIGATE.info("Save Cookies");
         if (Files.exists(cookiesPath)) {
             Files.delete(cookiesPath);
         }
+        //TODO user JSON serialization
         try (ObjectOutputStream oos = new ObjectOutputStream(Files.newOutputStream(cookiesPath))) {
             oos.writeObject(con.request().cookies());
         }
     }
 
-    public void restoreCookies() throws ExecutionException, IOException {
+    public void restoreCookies() throws IOException {
         LOG_NAVIGATE.info("Restore Cookies");
         try (ObjectInputStream ois = new ObjectInputStream(Files.newInputStream(cookiesPath))) {
             con.request().cookies().putAll((Map<String, String>) ois.readObject());
         } catch (ClassNotFoundException | ClassCastException e) {
-            throw new ExecutionException(e);
+            throw new IOException("Illegal data in cookies file " + cookiesPath, e);
         }
     }
 
@@ -227,41 +270,42 @@ public class StudipBrowser implements StudipAdapter {
         }
     }
 
-    public boolean hasCookies() throws IOException {
-        return Files.isRegularFile(cookiesPath) && Files.size(cookiesPath) > 0;
+    public boolean hasCookies() {
+        try {
+            return Files.isRegularFile(cookiesPath) && Files.size(cookiesPath) > 0;
+        } catch (IOException e) {
+            LOG_NAVIGATE.warn("Couldn't read cookies from " + cookiesPath + ", prompting for password", e);
+            return false;
+        }
     }
 
     // --------------------------------PARSERS---------------------------------
 
     @Override
-    public List<Seminar> parseSeminars() throws ExecutionException {
-        try {
-            ensureLoggedIn();
+    public List<Seminar> parseSeminars() throws StudipException {
+        ensureLoggedIn();
 
-            navigate(PAGE_SEMINARS);
+        navigate(PAGE_SEMINARS);
 
-            Elements events = document.select("#content>table:first-of-type>tbody>tr");
-            List<Seminar> seminars = new ArrayList<>();
-            for (org.jsoup.nodes.Element event : events) {
-                if (event.select(">td").size() > 4) {
-                    Elements info = event.select(">td:nth-of-type(4)>a:first-of-type");
-                    Elements font = info.select("font");
-                    if (info.size() >= 1 && font.size() >= 2) {
-                        Seminar seminar = Seminar.getSeminar(info.get(0).absUrl("href"), font.get(0).text().trim(), font.get(1).text().trim());
-                        seminars.add(seminar);
-                    }
+        Elements events = document.select("#content>table:first-of-type>tbody>tr");
+        List<Seminar> seminars = new ArrayList<>();
+        for (org.jsoup.nodes.Element event : events) {
+            if (event.select(">td").size() > 4) {
+                Elements info = event.select(">td:nth-of-type(4)>a:first-of-type");
+                Elements font = info.select("font");
+                if (info.size() >= 1 && font.size() >= 2) {
+                    Seminar seminar = Seminar.getSeminar(info.get(0).absUrl("href"), font.get(0).text().trim(), font.get(1).text().trim());
+                    seminars.add(seminar);
                 }
             }
-            LOG_SEMINARS.info("Updated " + seminars.size() + " seminars.");
-            LOG_SEMINARS.debug(seminars.toString());
-            return seminars;
-        } catch (MalformedURLException e) {
-            throw new ExecutionException(e);
         }
+        LOG_SEMINARS.info("Parsed " + seminars.size() + " seminars.");
+        LOG_SEMINARS.debug(seminars.toString());
+        return seminars;
     }
 
     @Override
-    public List<Download> parseDownloads(String downloadsUrl, boolean structured) throws ExecutionException {
+    public List<Download> parseDownloads(String downloadsUrl, boolean structured) throws StudipException {
         try {
             ensureLoggedIn();
             ensureCurrentSeminarSelected();
@@ -273,31 +317,36 @@ public class StudipBrowser implements StudipAdapter {
             Elements rows = document.select("#content>table>tbody>tr:nth-of-type(2)>td:nth-of-type(2)>table>tbody>tr>td>table");
             for (org.jsoup.nodes.Element row : rows) {
                 Elements content = row.select(">tbody>tr>td.printhead");
-                Elements insets = row.select(">tbody>tr>td.blank img[src=\"https://studip.uni-passau.de/studip/pictures/forumleer.gif\"]");
+                Elements insets = row.select(">tbody>tr>td.blank img");
                 if (content.size() >= 2) {
                     Elements info = content.get(1).select("a");
-                    Elements link = content.get(2).select("span a");
-                    Elements time = content.get(2).select("span a~span");
+                    Elements link = content.get(2).select("a[title]");
+                    List<TextNode> time = content.get(2).textNodes();
                     if (info.size() > 0 && link.size() > 0 && time.size() > 0) {
                         Download download = Download.getDownload(
                                 link.get(0).absUrl("href"),
                                 info.get(0).text().trim(),
-                                time.get(0).text().trim(),
+                                time.get(time.size() - 1).text().trim().replace("\u00a0", ""),
                                 "");
                         download.setSeminar(currentSeminar);
-                        int level = insets.size() - 2;
-                        if (level >= 0) {
+                        int level = insets.size() - 3;
+                        if (level > 0) {
                             download.setParent(stack.get(level - 1));
-                            stack.put(download.getLevel(), download);
+                        } else {
+                            download.setLevel(level);
                         }
+                        stack.put(download.getLevel(), download);
                         downloads.add(download);
                         //TODO read size, description
                     }
                 }
             }
             return downloads;
-        } catch (MalformedURLException e) {
-            throw new ExecutionException(e);
+        } catch (StudipException ex) {
+            ex.put("studip.seminar", currentSeminar);
+            ex.put("parseDownloads.listUrl", downloadsUrl);
+            ex.put("parseDownloads.structured", structured);
+            throw ex;
         }
     }
 

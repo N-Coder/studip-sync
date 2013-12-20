@@ -23,8 +23,12 @@ public class LocalStorage {
         this.root = root;
     }
 
-    public static LocalStorage openZip(Path zip) throws IOException, URISyntaxException {
-        return openZip(new URI("jar", zip.toUri().toString(), ""));
+    public static LocalStorage openZip(Path zip) throws IOException {
+        try {
+            return openZip(new URI("jar", zip.toUri().toString(), ""));
+        } catch (URISyntaxException e) {
+            throw new IOException("Can't open zip file " + zip, e);
+        }
     }
 
     public static LocalStorage openZip(URI uri) throws IOException {
@@ -57,13 +61,15 @@ public class LocalStorage {
         return root.resolve(seminar.getID());
     }
 
-    public void store(Download download, InputStream dataSrc, boolean isDiff) throws URISyntaxException, IOException {
-        Path tmp = Files.createTempFile(root, download.getSeminar().getID() + "-" + download.getFileName(), "");
-        Files.copy(dataSrc, tmp);
+    public void store(Download download, InputStream dataSrc, boolean isDiff) throws IOException {
+        //TODO downloading should be handled externally
+        Path tmp = Files.createTempFile(download.getSeminar().getID() + "-", download.getFileName());
+        Files.copy(dataSrc, tmp, StandardCopyOption.REPLACE_EXISTING);
         store(download, tmp, isDiff);
+        Files.delete(tmp);
     }
 
-    public void store(Download download, Path dataSrc, boolean isDiff) throws URISyntaxException, IOException {
+    public void store(Download download, Path dataSrc, boolean isDiff) throws IOException {
         Path dstPath = resolve(download);
         Loggers.LOG_DOWNLOAD.info(download + " <<" + (isDiff ? "DIF" : "NEW") + "<< " + dataSrc);
         if (!isDiff) {
@@ -113,7 +119,7 @@ public class LocalStorage {
         }
     }
 
-    private void storeZipped(final Download download, Path src, final Path dstRoot) throws IOException, URISyntaxException {
+    private void storeZipped(final Download download, Path src, final Path dstRoot) throws IOException {
         if (Files.size(src) <= 0) {
             throw new IOException("Empty file");
         }
@@ -128,6 +134,8 @@ public class LocalStorage {
                     }
                 });
             }
+        } catch (URISyntaxException e) {
+            throw new IOException("Can't open zip file " + src, e);
         }
     }
 
@@ -144,8 +152,9 @@ public class LocalStorage {
             byte[] srcBuf = new byte[1024];
             byte[] dstBuf = new byte[1024];
             try (InputStream srcIn = Files.newInputStream(fileA); InputStream dstIn = Files.newInputStream(fileB);) {
-                srcIn.read(srcBuf);
-                dstIn.read(dstBuf);
+                if (srcIn.read(srcBuf) != dstIn.read(dstBuf)) {
+                    return false;
+                }
                 if (!Arrays.equals(srcBuf, dstBuf)) {
                     return false;
                 }
@@ -176,6 +185,8 @@ public class LocalStorage {
     }
 
     public static interface StorageListener {
+        //TODO update Listeners
+
         public void fileDeleted(Download download, Path child);
 
         public void fileUpdated(Download download, Path child);
