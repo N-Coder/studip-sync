@@ -50,7 +50,7 @@ public class Values {
 //    }
 
     public static Map<String, Object> zipFSOptions(boolean create) {
-        Map<String, Object> options = new HashMap<String, Object>();
+        Map<String, Object> options = new HashMap<>();
         options.put("create", create + "");
         options.put("encoding", ENCODING);
         return options;

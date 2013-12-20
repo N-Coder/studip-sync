@@ -22,7 +22,7 @@ public class StudipException extends ExecutionException {
         super(cause);
     }
 
-    public Object get(Object key) {
+    public Object get(String key) {
         return additionals.get(key);
     }
 
@@ -30,7 +30,7 @@ public class StudipException extends ExecutionException {
         return additionals.put(key, value);
     }
 
-    public Object remove(Object key) {
+    public Object remove(String key) {
         return additionals.remove(key);
     }
 

@@ -22,7 +22,7 @@ public class URLUtils {
 
     public static Map<String, String> extractParameters(String query) {
         String[] split = query.split("&");
-        HashMap<String, String> params = new HashMap<String, String>();
+        HashMap<String, String> params = new HashMap<>();
         for (String param : split) {
             String[] tuple = param.split("=");
             params.put(tuple[0], tuple[1]);

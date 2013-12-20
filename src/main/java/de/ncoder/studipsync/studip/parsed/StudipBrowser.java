@@ -15,7 +15,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.net.*;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLConnection;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -30,11 +33,11 @@ import static de.ncoder.studipsync.Values.*;
 
 public class StudipBrowser implements StudipAdapter {
     private final UIAdapter ui;
-    private Path cookiesPath;
+    private final Path cookiesPath;
 
     private Seminar currentSeminar;
 
-    public StudipBrowser(UIAdapter ui, Path cookiesPath) throws IOException, URISyntaxException {
+    public StudipBrowser(UIAdapter ui, Path cookiesPath) {
         this.ui = ui;
         this.cookiesPath = cookiesPath;
     }
@@ -56,9 +59,7 @@ public class StudipBrowser implements StudipAdapter {
 
     private Connection con;
     private Document document;
-    private List<NavigationListener> listeners = new ArrayList<>();
-
-    private int loadCount = 0;
+    private final List<NavigationListener> listeners = new ArrayList<>();
 
     private void setDocument(Document document) throws StudipException {
         this.document = document;

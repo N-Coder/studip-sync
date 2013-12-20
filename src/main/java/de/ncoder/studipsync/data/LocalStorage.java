@@ -16,7 +16,7 @@ import java.util.List;
 
 public class LocalStorage {
     private final Path root;
-    private final List<StorageListener> listeners = new LinkedList<StorageListener>();
+    private final List<StorageListener> listeners = new LinkedList<>();
     private transient FileSystem underlyingFS;
 
     private LocalStorage(Path root) {
@@ -151,7 +151,7 @@ public class LocalStorage {
             }
             byte[] srcBuf = new byte[1024];
             byte[] dstBuf = new byte[1024];
-            try (InputStream srcIn = Files.newInputStream(fileA); InputStream dstIn = Files.newInputStream(fileB);) {
+            try (InputStream srcIn = Files.newInputStream(fileA); InputStream dstIn = Files.newInputStream(fileB)) {
                 if (srcIn.read(srcBuf) != dstIn.read(dstBuf)) {
                     return false;
                 }

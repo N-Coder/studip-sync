@@ -30,7 +30,7 @@ public class Syncer {
     private final StudipAdapter adapter;
     private final LocalStorage storage;
     private final ReentrantLock browserLock = new ReentrantLock();
-    private ThreadLocal<Marker> marker = new ThreadLocal<>();
+    private final ThreadLocal<Marker> marker = new ThreadLocal<>();
 
     public Syncer(StudipAdapter adapter, LocalStorage storage, ExecutorService executor) {
         this.adapter = adapter;
