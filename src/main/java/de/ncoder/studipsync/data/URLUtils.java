@@ -36,13 +36,6 @@ public class URLUtils {
         } catch (MalformedURLException e) {
             throw new RuntimeException("Illegal URL generated from " + base + " with params " + params, e);
         }
-//		try {
-//			return setUriParameters(base.toURI(), params).toURL();
-//		} catch (URISyntaxException e) {
-//			MalformedURLException ex = new MalformedURLException();
-//			ex.initCause(e);
-//			throw ex;
-//		}
     }
 
     public static URI setUriParameters(URI base, Map<String, String> params) {

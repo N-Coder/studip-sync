@@ -1,4 +1,4 @@
-package de.ncoder.studipsync.studip;
+package de.ncoder.studipsync.ui;
 
 import de.ncoder.studipsync.data.LoginData;
 

@@ -1,9 +1,10 @@
 package de.ncoder.studipsync;
 
-import de.ncoder.studipsync.data.LocalStorage;
 import de.ncoder.studipsync.data.LoginData;
-import de.ncoder.studipsync.studip.UIAdapter;
-import de.ncoder.studipsync.studip.parsed.StudipBrowser;
+import de.ncoder.studipsync.storage.LocalStorage;
+import de.ncoder.studipsync.studip.jsoup.JsoupStudipAdapter;
+import de.ncoder.studipsync.ui.UIAdapter;
+import de.ncoder.studipsync.ui.swing.LoginDialog;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
@@ -14,7 +15,6 @@ import java.io.Console;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -23,8 +23,6 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.concurrent.TimeUnit;
 
-import static de.ncoder.studipsync.Loggers.LOG_MAIN;
-import static de.ncoder.studipsync.Loggers.LOG_NAVIGATE;
 import static de.ncoder.studipsync.Values.*;
 
 public class Starter {
@@ -42,11 +40,11 @@ public class Starter {
             LOG_MAIN.error("Uncaught exception", e);
         } finally {
             syncer.close();
-            //FIXME AWT Event Queue blocks termiantion with modality level 1
+            //FIXME AWT Event Queue blocks termination with modality level 1
         }
     }
 
-    public static Syncer createSyncer(CommandLine cmd) throws IOException, URISyntaxException, ParseException {
+    public static Syncer createSyncer(CommandLine cmd) throws IOException, ParseException {
         int timeoutMs = (int) TimeUnit.SECONDS.toMillis(2);
         if (cmd.hasOption(OPTION_TIMEOUT)) {
             try {
@@ -86,8 +84,8 @@ public class Starter {
 
         UIAdapter ui = getUI(uiType);
         LocalStorage storage = LocalStorage.open(cachePath);
-        StudipBrowser browser = new StudipBrowser(ui, cookiesPath, timeoutMs);
-        browser.addNavigationListener(new StudipBrowser.NavigationListener() {
+        JsoupStudipAdapter browser = new JsoupStudipAdapter(ui, cookiesPath, timeoutMs);
+        browser.addNavigationListener(new JsoupStudipAdapter.NavigationListener() {
             @Override
             public void navigated(URL url) {
                 LOG_NAVIGATE.debug(url.toString());
@@ -156,7 +154,7 @@ public class Starter {
             @Override
             public LoginData requestLoginData() {
                 loginTries++;
-                return new de.ncoder.studipsync.ui.LoginDialog(loginTries > 0).requestLoginData();
+                return new LoginDialog(loginTries > 0).requestLoginData();
             }
 
             public void displayWebpage(URI uri) {

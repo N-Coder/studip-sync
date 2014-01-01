@@ -1,4 +1,4 @@
-package de.ncoder.studipsync.studip.parsed;
+package de.ncoder.studipsync.studip.jsoup;
 
 import org.jsoup.helper.Validate;
 import org.jsoup.nodes.Document;

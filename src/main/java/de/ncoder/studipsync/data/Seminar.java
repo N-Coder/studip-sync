@@ -9,6 +9,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
+import static de.ncoder.studipsync.studip.StudipAdapter.PARAM_SEMINAR_SELECTION;
+
 public class Seminar implements Serializable {
     private static final Map<URL, Seminar> instances = new HashMap<>();
 
@@ -47,7 +49,7 @@ public class Seminar implements Serializable {
     // ------------------------------------------------------------------------
 
     public String getHash() {
-        String hash = urlParams.get("auswahl");
+        String hash = urlParams.get(PARAM_SEMINAR_SELECTION);
         return hash == null ? "?" + Objects.hashCode(name) + "?" : hash;
     }
 

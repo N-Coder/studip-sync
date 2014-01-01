@@ -2,26 +2,19 @@ package de.ncoder.studipsync;
 
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.text.SimpleDateFormat;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
 
 @SuppressWarnings("static-access")
 public class Values {
-    public static final String PAGE_COVER = "http://intelec.uni-passau.de";
-    public static final String PAGE_BASE = "http://studip.uni-passau.de";
-    public static final String PAGE_LOGIN = "http://studip.uni-passau.de/studip/login.php";
-    public static final String PAGE_DO_LOGIN = "https://studip.uni-passau.de/studip/index.php";
-    public static final String PAGE_SEMINARS = PAGE_BASE + "/studip/meine_seminare.php";
-    public static final String PAGE_SELECT_SEMINAR = PAGE_BASE + "/studip/seminar_main.php?auswahl=%s";
-    public static final String PAGE_DOWNLOADS = PAGE_BASE + "/studip/plugins.php?cmd=show&id=19&view=seminarFolders&order=name";
-    public static final String PAGE_DOWNLOADS_LATEST = PAGE_BASE + "/studip/plugins.php?cmd=show&id=19&view=onlyFiles&order=chdate";
-
-    public static final String ENCODING = "Cp1252";
-    public static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd.MM.yyyy - HH:mm"); // 26.08.2013 - 20:38
+    public static final Logger LOG_MAIN = LoggerFactory.getLogger("MAIN");
+    public static final Logger LOG_SYNCER = LoggerFactory.getLogger("Sync");
+    public static final Logger LOG_NAVIGATE = LoggerFactory.getLogger("Navigate");
+    public static final Logger LOG_SEMINARS = LoggerFactory.getLogger("Seminar");
+    public static final Logger LOG_DOWNLOAD = LoggerFactory.getLogger("Download");
 
     public static final Options OPTIONS;
     public static final String OPTION_UI = "ui";
@@ -90,12 +83,5 @@ public class Values {
     }
 
     private Values() {
-    }
-
-    public static Map<String, Object> zipFSOptions(boolean create) {
-        Map<String, Object> options = new HashMap<>();
-        options.put("create", create + "");
-        options.put("encoding", ENCODING);
-        return options;
     }
 }

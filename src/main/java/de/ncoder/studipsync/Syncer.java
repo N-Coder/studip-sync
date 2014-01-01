@@ -1,8 +1,8 @@
 package de.ncoder.studipsync;
 
 import de.ncoder.studipsync.data.Download;
-import de.ncoder.studipsync.data.LocalStorage;
 import de.ncoder.studipsync.data.Seminar;
+import de.ncoder.studipsync.storage.LocalStorage;
 import de.ncoder.studipsync.studip.StudipAdapter;
 import de.ncoder.studipsync.studip.StudipException;
 import org.slf4j.Marker;
@@ -21,9 +21,9 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
-import static de.ncoder.studipsync.Loggers.LOG_SYNCER;
-import static de.ncoder.studipsync.Values.PAGE_DOWNLOADS;
-import static de.ncoder.studipsync.Values.PAGE_DOWNLOADS_LATEST;
+import static de.ncoder.studipsync.Values.LOG_SYNCER;
+import static de.ncoder.studipsync.studip.StudipAdapter.PAGE_DOWNLOADS;
+import static de.ncoder.studipsync.studip.StudipAdapter.PAGE_DOWNLOADS_LATEST;
 
 public class Syncer {
     private final StudipAdapter adapter;
@@ -71,7 +71,7 @@ public class Syncer {
         }
     }
 
-    public void syncSeminar(final Seminar seminar, boolean forceAbsolute) throws InterruptedException, StudipException {
+    public void syncSeminar(final Seminar seminar, boolean forceAbsolute) throws StudipException {
         try {
             //Find downloads
             boolean hasDiff = false;

@@ -1,11 +1,11 @@
-package de.ncoder.studipsync.studip.parsed;
+package de.ncoder.studipsync.studip.jsoup;
 
 import de.ncoder.studipsync.data.Download;
 import de.ncoder.studipsync.data.LoginData;
 import de.ncoder.studipsync.data.Seminar;
 import de.ncoder.studipsync.studip.StudipAdapter;
 import de.ncoder.studipsync.studip.StudipException;
-import de.ncoder.studipsync.studip.UIAdapter;
+import de.ncoder.studipsync.ui.UIAdapter;
 import org.jsoup.Connection;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.TextNode;
@@ -25,18 +25,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
 
-import static de.ncoder.studipsync.Loggers.LOG_NAVIGATE;
-import static de.ncoder.studipsync.Loggers.LOG_SEMINARS;
-import static de.ncoder.studipsync.Values.*;
+import static de.ncoder.studipsync.Values.LOG_NAVIGATE;
+import static de.ncoder.studipsync.Values.LOG_SEMINARS;
 
-public class StudipBrowser implements StudipAdapter {
+public class JsoupStudipAdapter implements StudipAdapter {
     private final UIAdapter ui;
     private final Path cookiesPath;
     private final int timeoutMs;
 
     private Seminar currentSeminar;
 
-    public StudipBrowser(UIAdapter ui, Path cookiesPath, int timeoutMs) {
+    public JsoupStudipAdapter(UIAdapter ui, Path cookiesPath, int timeoutMs) {
         this.ui = ui;
         this.cookiesPath = cookiesPath;
         this.timeoutMs = timeoutMs;
@@ -123,7 +122,7 @@ public class StudipBrowser implements StudipAdapter {
         try {
             Path tmp = Files.createTempFile("studip-dump", ".html");
             Files.copy(new ByteArrayInputStream(document.outerHtml().getBytes()), tmp, StandardCopyOption.REPLACE_EXISTING);
-            LOG_NAVIGATE.info("Displaying webpage " + con.url());
+            LOG_NAVIGATE.info("Displaying " + con.url());
             ui.displayWebpage(tmp.toUri());
         } catch (IOException e) {
             LOG_NAVIGATE.warn("Can't write page dump", e);
@@ -268,11 +267,16 @@ public class StudipBrowser implements StudipAdapter {
         }
     }
 
+    @SuppressWarnings("unchecked")
     public void restoreCookies() throws IOException {
         if (cookiesPath != null) {
             LOG_NAVIGATE.info("Restore Cookies");
             try (ObjectInputStream ois = new ObjectInputStream(Files.newInputStream(cookiesPath))) {
-                con.request().cookies().putAll((Map<String, String>) ois.readObject());
+                Object o = ois.readObject();
+                if (!(o instanceof Map)) {
+                    throw new IOException("Illegal data " + o + " in cookies file " + cookiesPath);
+                }
+                con.request().cookies().putAll((Map) o);
             } catch (ClassNotFoundException | ClassCastException e) {
                 throw new IOException("Illegal data in cookies file " + cookiesPath, e);
             }

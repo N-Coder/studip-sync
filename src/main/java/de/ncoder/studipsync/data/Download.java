@@ -1,7 +1,5 @@
 package de.ncoder.studipsync.data;
 
-import de.ncoder.studipsync.Loggers;
-import de.ncoder.studipsync.Values;
 import de.ncoder.studipsync.studip.StudipException;
 
 import java.io.Serializable;
@@ -12,8 +10,9 @@ import java.net.URLDecoder;
 import java.text.ParseException;
 import java.util.*;
 
-// TODO externalize parsing relevant Strings
-// TODO make URL non final, but immodifyable
+import static de.ncoder.studipsync.Values.LOG_DOWNLOAD;
+import static de.ncoder.studipsync.studip.StudipAdapter.*;
+
 // TODO improve parent hierarchy
 public class Download implements Serializable {
     private static final Map<URL, Download> instances = new HashMap<>();
@@ -35,14 +34,14 @@ public class Download implements Serializable {
 
     private Download(URL url) {
         Map<String, String> urlParams = URLUtils.extractUrlParameters(url);
-        isChanged = "true".equals(urlParams.get("newestOnly"));
+        isChanged = Boolean.parseBoolean(urlParams.get(PARAM_NEWEST_ONLY));
 
         // Newest
-        urlParams.put("newestOnly", "true");
+        urlParams.put(PARAM_NEWEST_ONLY, Boolean.toString(true));
         diffUrl = URLUtils.setUrlParameters(url, urlParams);
 
         // General
-        urlParams.put("newestOnly", "false");
+        urlParams.put(PARAM_NEWEST_ONLY, Boolean.toString(false));
         this.url = URLUtils.setUrlParameters(url, urlParams);
 
         this.urlParams = Collections.unmodifiableMap(urlParams);
@@ -76,7 +75,7 @@ public class Download implements Serializable {
         if (string == null || string.isEmpty()) {
             return -1;
         }
-        return 0; // TODO parse size (dependency "read size" in parseDownloads.browser)
+        return 0; // TODO parse size (dependency "read size" in JsoupStudipAdapter.java)
     }
 
     private static Date parseDate(String string) {
@@ -84,7 +83,7 @@ public class Download implements Serializable {
             return null;
         }
         try {
-            return Values.DATE_FORMAT.parse(string);
+            return DATE_FORMAT.parse(string);
         } catch (ParseException e) {
             e.printStackTrace();
             return null;
@@ -94,9 +93,9 @@ public class Download implements Serializable {
     // ------------------------------------------------------------------------
 
     public String getHash() {
-        String hash = urlParams.get("file_id");
+        String hash = urlParams.get(PARAM_FILE_ID);
         if (hash == null) {
-            hash = urlParams.get("folder_id");
+            hash = urlParams.get(PARAM_FOLDER_ID);
         }
         if (hash == null) {
             hash = "?" + Objects.hashCode(url);
@@ -105,27 +104,21 @@ public class Download implements Serializable {
     }
 
     public boolean isFolder() {
-        return urlParams.containsKey("folder_id");
+        return urlParams.containsKey(PARAM_FOLDER_ID);
     }
 
-    private static final String[] urlOldChars = new String[]{" ", ":", "ä", "ö", "ü", "Ä", "Ö", "Ü", "ß", "(", ")"};
-    private static final String[] urlNewChars = new String[]{"_", "", "ae", "oe", "ue", "Ae", "Oe", "Ue", "ss", "", ""};
-
     public String getFileName() {
-        String name = urlParams.get("file_name");
+        String name = urlParams.get(PARAM_FILE_NAME);
         if (name == null) {
             name = getDisplayName();
-            // if (isFolder()) {
-            // name += ".zip";
-            // }
         }
         try {
-            name = URLDecoder.decode(name, "ISO-8859-1");
+            name = URLDecoder.decode(name, URI_ENCODING);
         } catch (UnsupportedEncodingException e) {
-            Loggers.LOG_DOWNLOAD.warn("Could't decode URL", e);
+            LOG_DOWNLOAD.warn("Couldn't decode URL", e);
         }
-        for (int i = 0; i < urlOldChars.length; i++) {
-            name = name.replace(urlOldChars[i], urlNewChars[i]);
+        for (int i = 0; i < URI_ILLEGAL_CHARS.length; i++) {
+            name = name.replace(URI_ILLEGAL_CHARS[i], URI_REPLACE_CHARS[i]);
         }
         return name;
     }

@@ -5,7 +5,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
 public class StudipException extends ExecutionException {
-    private Map<String, Object> additionals = new HashMap<>();
+    private final Map<String, Object> additionals = new HashMap<>();
 
     public StudipException() {
     }

@@ -1,7 +1,7 @@
-package de.ncoder.studipsync.data;
+package de.ncoder.studipsync.storage;
 
-import de.ncoder.studipsync.Loggers;
-import de.ncoder.studipsync.Values;
+import de.ncoder.studipsync.data.Download;
+import de.ncoder.studipsync.data.Seminar;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -10,9 +10,10 @@ import java.net.URISyntaxException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
-import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
+
+import static de.ncoder.studipsync.Values.LOG_DOWNLOAD;
+import static de.ncoder.studipsync.studip.StudipAdapter.ZIP_ENCODING;
 
 public class LocalStorage {
     private final Path root;
@@ -32,7 +33,7 @@ public class LocalStorage {
     }
 
     public static LocalStorage openZip(URI uri) throws IOException {
-        FileSystem cache = FileSystems.newFileSystem(uri, Values.zipFSOptions(true));
+        FileSystem cache = FileSystems.newFileSystem(uri, zipFSOptions(true));
         LocalStorage storage = new LocalStorage(cache.getPath("/"));
         storage.underlyingFS = cache;
         return storage;
@@ -79,7 +80,7 @@ public class LocalStorage {
 
     public void store(Download download, Path dataSrc, boolean isDiff) throws IOException {
         Path dstPath = resolve(download);
-        Loggers.LOG_DOWNLOAD.info(download + " <<" + (isDiff ? "DIF" : "NEW") + "<< " + dataSrc);
+        LOG_DOWNLOAD.info(download + " <<" + (isDiff ? "DIF" : "NEW") + "<< " + dataSrc);
         if (!isDiff) {
             delete(download, dstPath);
         }
@@ -125,7 +126,7 @@ public class LocalStorage {
             Files.createDirectories(dst.getParent());
         }
         if (!checkFilesEqual(src, dst)) {
-            Loggers.LOG_DOWNLOAD.debug("	" + src + " >> " + dst);
+            LOG_DOWNLOAD.debug("	" + src + " >> " + dst);
             Files.move(src, dst, StandardCopyOption.REPLACE_EXISTING);
             Files.setLastModifiedTime(dst, FileTime.fromMillis(System.currentTimeMillis()));
             for (StorageListener l : listeners) {
@@ -138,7 +139,7 @@ public class LocalStorage {
         if (Files.size(src) <= 0) {
             throw new IOException("Empty file");
         }
-        try (FileSystem srcFS = FileSystems.newFileSystem(new URI("jar", src.toUri().toString(), ""), Values.zipFSOptions(false))) {
+        try (FileSystem srcFS = FileSystems.newFileSystem(new URI("jar", src.toUri().toString(), ""), zipFSOptions(false))) {
             for (final Path srcRoot : srcFS.getRootDirectories()) {
                 Files.walkFileTree(srcRoot, new SimpleFileVisitor<Path>() {
                     @Override
@@ -176,7 +177,7 @@ public class LocalStorage {
             }
             return true;
         } catch (IOException e) {
-            Loggers.LOG_DOWNLOAD.warn("Could not compare files " + fileA + " and " + fileB, e);
+            LOG_DOWNLOAD.warn("Could not compare files " + fileA + " and " + fileB, e);
             return false;
         }
     }
@@ -205,5 +206,12 @@ public class LocalStorage {
         public void fileDeleted(Download download, Path child);
 
         public void fileUpdated(Download download, Path child);
+    }
+
+    public static Map<String, Object> zipFSOptions(boolean create) {
+        Map<String, Object> options = new HashMap<>();
+        options.put("create", create + "");
+        options.put("encoding", ZIP_ENCODING);
+        return options;
     }
 }

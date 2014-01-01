@@ -7,7 +7,6 @@ public class LoginData {
     private char[] password;
 
     public LoginData(String username, char[] password) {
-        super();
         this.username = username;
         this.password = password;
     }
@@ -16,16 +15,8 @@ public class LoginData {
         return username;
     }
 
-    public void setUsername(String username) {
-        this.username = username;
-    }
-
     public char[] getPassword() {
         return password;
-    }
-
-    public void setPassword(char[] password) {
-        this.password = password;
     }
 
     public void clean() {
