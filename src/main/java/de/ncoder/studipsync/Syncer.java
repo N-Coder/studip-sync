@@ -19,7 +19,6 @@ import java.sql.Date;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static de.ncoder.studipsync.Loggers.LOG_SYNCER;
@@ -32,10 +31,9 @@ public class Syncer {
     private final ReentrantLock browserLock = new ReentrantLock();
     private final ThreadLocal<Marker> marker = new ThreadLocal<>();
 
-    public Syncer(StudipAdapter adapter, LocalStorage storage, ExecutorService executor) {
+    public Syncer(StudipAdapter adapter, LocalStorage storage) {
         this.adapter = adapter;
         this.storage = storage;
-        //this.executor = executor;
     }
 
     public synchronized void sync() throws StudipException, InterruptedException {
@@ -50,11 +48,12 @@ public class Syncer {
         } finally {
             browserLock.unlock();
         }
+        LOG_SYNCER.info(seminars.size() + " seminars");
 
         //Find seminars
         List<StudipException> exceptions = new ArrayList<>();
         for (Seminar seminar : seminars) {
-            marker.set(MarkerFactory.getMarker(seminar.getID()));
+            marker.set(MarkerFactory.getMarker(seminar.getHash().substring(0, 5)));
             try {
                 syncSeminar(seminar, false);
             } catch (StudipException e) {
@@ -78,10 +77,10 @@ public class Syncer {
             boolean hasDiff = false;
             browserLock.lock();
             try {
-                LOG_SYNCER.info(marker.get(), "" + seminar);
+                LOG_SYNCER.info(marker.get(), seminar + (forceAbsolute ? " absolute" : ""));
                 adapter.selectSeminar(seminar);
                 List<Download> downloads = adapter.parseDownloads(PAGE_DOWNLOADS, true);
-                LOG_SYNCER.info(marker.get(), downloads.size() + " downloads:");
+                LOG_SYNCER.info(marker.get(), "Found " + downloads.size() + " downloadable files");
                 for (final Download download : downloads) {
                     if (download.getLevel() == 0) {
                         try {

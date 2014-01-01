@@ -24,18 +24,6 @@ import java.util.zip.GZIPInputStream;
  * @see org.jsoup.Jsoup#connect(String)
  */
 public class HttpConnection implements Connection {
-    public static Connection connect(String url) {
-        Connection con = new HttpConnection();
-        con.url(url);
-        return con;
-    }
-
-    public static Connection connect(URL url) {
-        Connection con = new HttpConnection();
-        con.url(url);
-        return con;
-    }
-
     private static String encodeUrl(String url) {
         if (url == null)
             return null;
@@ -45,7 +33,7 @@ public class HttpConnection implements Connection {
     private Connection.Request req;
     private Connection.Response res;
 
-    private HttpConnection() {
+    public HttpConnection() {
         req = new Request();
         res = new Response();
     }
@@ -63,6 +51,10 @@ public class HttpConnection implements Connection {
             throw new IllegalArgumentException("Malformed URL: " + url, e);
         }
         return this;
+    }
+
+    public URL url() {
+        return req.url();
     }
 
     public Connection userAgent(String userAgent) {
@@ -121,7 +113,6 @@ public class HttpConnection implements Connection {
     }
 
     public Connection data(String... keyvals) {
-        Validate.notNull(keyvals, "Data key value pairs must not be null");
         Validate.isTrue(keyvals.length % 2 == 0, "Must supply an even number of key value pairs");
         for (int i = 0; i < keyvals.length; i += 2) {
             String key = keyvals[i];
@@ -597,7 +588,7 @@ public class HttpConnection implements Connection {
                         // ignores path, date, domain, secure et al. req'd?
                         // name not blank, value not null
 
-                        /* FIXME studip sends illegal HTTP headers:
+                        /* studip sends illegal HTTP headers:
                          * Set-Cookie: Seminar_Session=deleted; expires=Tue, 18 Dec 2012 14:56:39 GMT; path=/studip/
                          * Set-Cookie: Seminar_Session=e949fd9d52cce010d4acf948ff090951; path=/studip/
                          * Order sensitive headers are against the HTTP spec. Usually the second value should overwrite the first,
@@ -647,7 +638,7 @@ public class HttpConnection implements Connection {
                 else
                     first = false;
                 sb.append(cookie.getKey()).append('=').append(cookie.getValue());
-                // todo: spec says only ascii, no escaping / encoding defined. validate on set? or escape somehow here?
+                // TODO spec says only ascii, no escaping / encoding defined. validate on set? or escape somehow here?
             }
             return sb.toString();
         }

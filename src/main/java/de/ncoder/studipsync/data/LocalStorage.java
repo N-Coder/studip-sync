@@ -38,11 +38,19 @@ public class LocalStorage {
         return storage;
     }
 
-    public static LocalStorage open(Path root) throws IOException {
+    public static LocalStorage openDir(Path root) throws IOException {
         if (!Files.isDirectory(root)) {
             Files.createDirectories(root);
         }
         return new LocalStorage(root);
+    }
+
+    public static LocalStorage open(Path root) throws IOException {
+        if (root.toString().endsWith(".zip")) {
+            return openZip(root);
+        } else {
+            return openDir(root);
+        }
     }
 
     public void close() throws IOException {
@@ -94,6 +102,13 @@ public class LocalStorage {
                     }
                     Files.delete(subpath);
                     return FileVisitResult.CONTINUE;
+
+                }
+
+                @Override
+                public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                    Files.delete(dir);
+                    return FileVisitResult.CONTINUE;
                 }
             });
         } else if (Files.exists(path)) {
@@ -128,7 +143,7 @@ public class LocalStorage {
                 Files.walkFileTree(srcRoot, new SimpleFileVisitor<Path>() {
                     @Override
                     public FileVisitResult visitFile(Path srcFile, BasicFileAttributes attr) throws IOException {
-                        Path dstFile = dstRoot.getParent().resolve(srcRoot.relativize(srcFile));
+                        Path dstFile = dstRoot.getParent().resolve(srcRoot.relativize(srcFile).toString());
                         storeFile(download, srcFile, dstFile);
                         return FileVisitResult.CONTINUE;
                     }

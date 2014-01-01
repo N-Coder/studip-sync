@@ -2,8 +2,12 @@ package de.ncoder.studipsync.studip;
 
 import de.ncoder.studipsync.data.LoginData;
 
-public interface UIAdapter {
-	public LoginData requestLoginData();
+import java.net.URI;
 
-	public void close();
+public interface UIAdapter {
+    public LoginData requestLoginData();
+
+    public void displayWebpage(URI uri);
+
+    public void close();
 }

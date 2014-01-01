@@ -11,9 +11,14 @@ public class LoginDialog extends JDialog {
     private JButton buttonCancel;
     private JTextField username;
     private JPasswordField password;
+    private JLabel labelError;
     private boolean accepted = false;
 
     public LoginDialog() {
+        this(false);
+    }
+
+    public LoginDialog(boolean loginFailed) {
         setContentPane(contentPane);
         setModal(true);
         getRootPane().setDefaultButton(buttonOK);
@@ -46,29 +51,33 @@ public class LoginDialog extends JDialog {
             }
         }, KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
 
-        pack();
+        if (loginFailed) {
+            labelError.setText("Invalid username or password");
+            labelError.setVisible(true);
+        }
     }
 
-    public LoginData getLoginData() {
-        if (!accepted) {
+    public LoginData requestLoginData() {
+        try {
+            pack();
             setVisible(true);
-        }
-        if (accepted) {
-            return new LoginData(username.getText(), password.getPassword());
-        } else {
-            return null;
+            if (accepted) {
+                return new LoginData(username.getText(), password.getPassword());
+            } else {
+                return null;
+            }
+        } finally {
+            dispose();
         }
     }
 
     private void onOK() {
         accepted = true;
         setVisible(false);
-        dispose();
     }
 
     private void onCancel() {
         accepted = false;
         setVisible(false);
-        dispose();
     }
 }

@@ -3,12 +3,12 @@ apply plugin: "maven"
 apply plugin: "idea"
 
 group = "de.ncoder.studipsync"
-version = "0.1.0-SNAPSHOT"
+version = "0.1.0"
 
 repositories {
     mavenCentral()
     maven {
-        url "https://swt-repo.googlecode.com/svn/repo/"
+        url "http://repository.apache.org/snapshots/"
     }
 }
 
@@ -16,14 +16,11 @@ dependencies {
     compile "com.google.guava:guava:12.0"
     compile "org.slf4j:slf4j-api:1.7.5"
     compile "org.jsoup:jsoup:1.7.3"
+    compile "commons-cli:commons-cli:1.3-SNAPSHOT"
 
     compile "ch.qos.logback:logback-classic:1.0.13"
-
-    testCompile "junit:junit:4.11"
 }
 
 sourceSets {
     main.java { exclude "**/archive/**" }
-
-    //main.groovy { exclude "**/archive/**" }
 }

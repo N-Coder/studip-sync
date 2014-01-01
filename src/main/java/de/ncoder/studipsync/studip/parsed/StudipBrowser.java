@@ -11,16 +11,14 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.TextNode;
 import org.jsoup.select.Elements;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -34,19 +32,21 @@ import static de.ncoder.studipsync.Values.*;
 public class StudipBrowser implements StudipAdapter {
     private final UIAdapter ui;
     private final Path cookiesPath;
+    private final int timeoutMs;
 
     private Seminar currentSeminar;
 
-    public StudipBrowser(UIAdapter ui, Path cookiesPath) {
+    public StudipBrowser(UIAdapter ui, Path cookiesPath, int timeoutMs) {
         this.ui = ui;
         this.cookiesPath = cookiesPath;
+        this.timeoutMs = timeoutMs;
     }
 
     // --------------------------------LIFECYCLE-------------------------------
 
     @Override
     public void init() throws StudipException {
-        con = HttpConnection.connect(PAGE_COVER);
+        con = new HttpConnection();
         navigate(PAGE_COVER);
     }
 
@@ -57,7 +57,7 @@ public class StudipBrowser implements StudipAdapter {
 
     // --------------------------------BROWSER---------------------------------
 
-    private Connection con;
+    private HttpConnection con;
     private Document document;
     private final List<NavigationListener> listeners = new ArrayList<>();
 
@@ -79,7 +79,7 @@ public class StudipBrowser implements StudipAdapter {
     protected void navigate(String url) throws StudipException {
         try {
             con.url(url);
-            con.timeout((int) NAVIGATE_TIMEOUT);
+            con.timeout(timeoutMs);
             try {
                 setDocument(con.get());
             } catch (IOException e) {
@@ -119,6 +119,17 @@ public class StudipBrowser implements StudipAdapter {
         }
     }
 
+    public void displayWebsite() {
+        try {
+            Path tmp = Files.createTempFile("studip-dump", ".html");
+            Files.copy(new ByteArrayInputStream(document.outerHtml().getBytes()), tmp, StandardCopyOption.REPLACE_EXISTING);
+            LOG_NAVIGATE.info("Displaying webpage " + con.url());
+            ui.displayWebpage(tmp.toUri());
+        } catch (IOException e) {
+            LOG_NAVIGATE.warn("Can't write page dump", e);
+        }
+    }
+
     // --------------------------------LOG IN----------------------------------
 
     @Override
@@ -127,7 +138,7 @@ public class StudipBrowser implements StudipAdapter {
             navigate(PAGE_LOGIN);
             if (hasCookies()) {
                 restoreCookies();
-                navigate(PAGE_INDEXES[0]);
+                navigate(PAGE_BASE);
             } else {
                 LoginData login = ui.requestLoginData();
                 if (login != null) {
@@ -156,11 +167,9 @@ public class StudipBrowser implements StudipAdapter {
 
     protected void doLogin(LoginData login) throws StudipException {
         try {
-            con.url(
-                    "https://studip.uni-passau.de/studip/index.php"
-            );
+            con.url(PAGE_DO_LOGIN);
             con.method(Connection.Method.POST);
-            con.timeout((int) NAVIGATE_TIMEOUT);
+            con.timeout(timeoutMs);
 
             con.header("Origin", "https://studip.uni-passau.de");
             con.header("Host", "studip.uni-passau.de");
@@ -168,20 +177,21 @@ public class StudipBrowser implements StudipAdapter {
             con.header("Referer", "https://studip.uni-passau.de/studip/login.php");
 
             con.data("username", login.getUsername());
-            con.data("password", new String(login.getPassword()));
             con.data("challenge", document.getElementById("challenge").val());
             con.data("login_ticket", document.getElementById("login_ticket").val());
             con.data("response", document.getElementById("response").val());
             con.data("resolution", "1366x768");
             con.data("submitbtn", "");
+            con.data("password", new String(login.getPassword()));
+            login.clean();
             try {
                 //FIXME check for password leaks
                 setDocument(con.post());
             } catch (IOException e) {
                 throw new StudipException("Can't login", e);
             } finally {
-                login.clean();
                 con.data("password", "XXX");
+                login.clean();
             }
         } catch (StudipException ex) {
             ex.put("navigate.url", con == null || con.request() == null ? "none" : con.request().url());
@@ -246,34 +256,38 @@ public class StudipBrowser implements StudipAdapter {
     // --------------------------------COOKIES---------------------------------
 
     public void saveCookies() throws IOException {
-        LOG_NAVIGATE.info("Save Cookies");
-        if (Files.exists(cookiesPath)) {
-            Files.delete(cookiesPath);
-        }
-        //TODO user JSON serialization
-        try (ObjectOutputStream oos = new ObjectOutputStream(Files.newOutputStream(cookiesPath))) {
-            oos.writeObject(con.request().cookies());
+        if (cookiesPath != null) {
+            LOG_NAVIGATE.info("Save Cookies");
+            if (Files.exists(cookiesPath)) {
+                Files.delete(cookiesPath);
+            }
+            //TODO use JSON serialization
+            try (ObjectOutputStream oos = new ObjectOutputStream(Files.newOutputStream(cookiesPath))) {
+                oos.writeObject(con.request().cookies());
+            }
         }
     }
 
     public void restoreCookies() throws IOException {
-        LOG_NAVIGATE.info("Restore Cookies");
-        try (ObjectInputStream ois = new ObjectInputStream(Files.newInputStream(cookiesPath))) {
-            con.request().cookies().putAll((Map<String, String>) ois.readObject());
-        } catch (ClassNotFoundException | ClassCastException e) {
-            throw new IOException("Illegal data in cookies file " + cookiesPath, e);
+        if (cookiesPath != null) {
+            LOG_NAVIGATE.info("Restore Cookies");
+            try (ObjectInputStream ois = new ObjectInputStream(Files.newInputStream(cookiesPath))) {
+                con.request().cookies().putAll((Map<String, String>) ois.readObject());
+            } catch (ClassNotFoundException | ClassCastException e) {
+                throw new IOException("Illegal data in cookies file " + cookiesPath, e);
+            }
         }
     }
 
     public void deleteCookies() throws IOException {
-        if (Files.exists(cookiesPath)) {
+        if (cookiesPath != null && Files.exists(cookiesPath)) {
             Files.delete(cookiesPath);
         }
     }
 
     public boolean hasCookies() {
         try {
-            return Files.isRegularFile(cookiesPath) && Files.size(cookiesPath) > 0;
+            return cookiesPath != null && Files.isRegularFile(cookiesPath) && Files.size(cookiesPath) > 0;
         } catch (IOException e) {
             LOG_NAVIGATE.warn("Couldn't read cookies from " + cookiesPath + ", prompting for password", e);
             return false;

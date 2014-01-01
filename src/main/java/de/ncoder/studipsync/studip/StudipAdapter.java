@@ -13,6 +13,8 @@ public interface StudipAdapter {
 
     void close() throws IOException;
 
+    void displayWebsite();
+
     boolean doLogin() throws CancellationException, StudipException;
 
     boolean isLoggedIn();
