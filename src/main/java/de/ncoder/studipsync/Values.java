@@ -26,6 +26,7 @@ public class Values {
     public static final Path DEFAULT_COOKIES_PATH = Paths.get(System.getProperty("user.dir"), "cookies.json");
 
     public static final Options OPTIONS;
+    public static final String OPTION_HELP = "h";
     public static final String OPTION_UI = "ui";
     public static final String OPTION_OUT = "o";
     public static final String OPTION_RESET = "r";
@@ -38,6 +39,10 @@ public class Values {
 
     static {
         OPTIONS = new Options();
+        OPTIONS.addOption(Option.builder(OPTION_HELP)
+                .longOpt("help")
+                .desc("print this message")
+                .build());
         OPTIONS.addOption(Option.builder(OPTION_UI)
                 .hasArg()
                 .argName(Arrays.toString(StandardUIAdapter.values()) + " or Java Classname")

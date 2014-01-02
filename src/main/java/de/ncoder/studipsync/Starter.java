@@ -6,10 +6,7 @@ import de.ncoder.studipsync.storage.StandardPathResolver;
 import de.ncoder.studipsync.studip.jsoup.JsoupStudipAdapter;
 import de.ncoder.studipsync.ui.StandardUIAdapter;
 import de.ncoder.studipsync.ui.UIAdapter;
-import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.DefaultParser;
-import org.apache.commons.cli.ParseException;
+import org.apache.commons.cli.*;
 
 import java.io.IOException;
 import java.net.URL;
@@ -21,19 +18,34 @@ import static de.ncoder.studipsync.Values.*;
 public class Starter {
 
     public static void main(String[] args) throws Exception {
+        boolean displayHelp = false;
         CommandLineParser parser = new DefaultParser();
-        CommandLine cmd = parser.parse(OPTIONS, args);
-
-        Syncer syncer = createSyncer(cmd);
         try {
-            LOG_MAIN.info("Started");
-            syncer.sync();
-            LOG_MAIN.info("Finished");
-        } catch (Exception e) {
-            LOG_MAIN.error("Uncaught exception", e);
+            CommandLine cmd = parser.parse(OPTIONS, args);
+            if (cmd.hasOption(OPTION_HELP)) {
+                displayHelp = true;
+                return;
+            }
+
+            Syncer syncer = createSyncer(cmd);
+            try {
+                LOG_MAIN.info("Started");
+                syncer.sync();
+                LOG_MAIN.info("Finished");
+            } catch (Exception e) {
+                LOG_MAIN.error("Uncaught exception", e);
+            } finally {
+                syncer.close();
+                //FIXME AWT Event Queue blocks termination with modality level 1
+            }
+        } catch (ParseException e) {
+            System.out.println("Illegal arguments passed. " + e.getMessage());
+            displayHelp = true;
         } finally {
-            syncer.close();
-            //FIXME AWT Event Queue blocks termination with modality level 1
+            if (displayHelp) {
+                HelpFormatter formatter = new HelpFormatter();
+                formatter.printHelp("studip-sync", OPTIONS);
+            }
         }
     }
 
