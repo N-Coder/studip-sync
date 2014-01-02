@@ -15,7 +15,8 @@ import java.util.*;
 import static de.ncoder.studipsync.Values.LOG_DOWNLOAD;
 import static de.ncoder.studipsync.studip.StudipAdapter.ZIP_ENCODING;
 
-public class LocalStorage {
+public class LocalStorage implements Storage {
+    private PathResolver resolverDelegate = StandardPathResolver.ResolveByHash;
     private final Path root;
     private final List<StorageListener> listeners = new LinkedList<>();
     private transient FileSystem underlyingFS;
@@ -54,6 +55,7 @@ public class LocalStorage {
         }
     }
 
+    @Override
     public void close() throws IOException {
         if (underlyingFS != null) {
             underlyingFS.close();
@@ -62,14 +64,26 @@ public class LocalStorage {
 
     // --------------------------------STORAGE---------------------------------
 
+    public void setPathResolverDelegate(PathResolver resolverDelegate) {
+        Objects.requireNonNull(resolverDelegate);
+        this.resolverDelegate = resolverDelegate;
+    }
+
+    public PathResolver getPathResolverDelegate() {
+        return resolverDelegate;
+    }
+
+    @Override
     public Path resolve(Download download) {
-        return resolve(download.getSeminar()).resolve(download.getPath());
+        return getPathResolverDelegate().resolve(getRoot(), download);
     }
 
+    @Override
     public Path resolve(Seminar seminar) {
-        return root.resolve(seminar.getID());
+        return getPathResolverDelegate().resolve(getRoot(), seminar);
     }
 
+    @Override
     public void store(Download download, InputStream dataSrc, boolean isDiff) throws IOException {
         //TODO downloading should be handled externally
         Path tmp = Files.createTempFile(download.getSeminar().getID() + "-", download.getFileName());
@@ -78,6 +92,7 @@ public class LocalStorage {
         Files.delete(tmp);
     }
 
+    @Override
     public void store(Download download, Path dataSrc, boolean isDiff) throws IOException {
         Path dstPath = resolve(download);
         LOG_DOWNLOAD.info(download + " <<" + (isDiff ? "DIF" : "NEW") + "<< " + dataSrc);
@@ -99,11 +114,10 @@ public class LocalStorage {
                 public FileVisitResult visitFile(Path subpath, BasicFileAttributes attrs) throws IOException {
                     Path relativeSubpath = subpath.relativize(parent);
                     for (StorageListener l : listeners) {
-                        l.fileDeleted(download, relativeSubpath);
+                        l.onDelete(download, relativeSubpath);
                     }
                     Files.delete(subpath);
                     return FileVisitResult.CONTINUE;
-
                 }
 
                 @Override
@@ -115,23 +129,23 @@ public class LocalStorage {
         } else if (Files.exists(path)) {
             Path relativePath = path.relativize(parent);
             for (StorageListener l : listeners) {
-                l.fileDeleted(download, relativePath);
+                l.onDelete(download, relativePath);
             }
             Files.delete(path);
         }
     }
 
-    private void storeFile(final Download download, Path src, final Path dst) throws IOException {
+    private void storeFile(final Download download, Path src, Path dst) throws IOException {
         if (dst.getParent() != null) {
             Files.createDirectories(dst.getParent());
         }
         if (!checkFilesEqual(src, dst)) {
             LOG_DOWNLOAD.debug("	" + src + " >> " + dst);
-            Files.move(src, dst, StandardCopyOption.REPLACE_EXISTING);
-            Files.setLastModifiedTime(dst, FileTime.fromMillis(System.currentTimeMillis()));
+            Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis()));
             for (StorageListener l : listeners) {
-                l.fileUpdated(download, dst);
+                l.onUpdate(download, dst, src);
             }
+            Files.move(src, dst, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
         }
     }
 
@@ -184,28 +198,24 @@ public class LocalStorage {
 
     // ------------------------------------------------------------------------
 
+    @Override
     public Path getRoot() {
         return root;
     }
 
+    @Override
     public boolean hasListener(StorageListener o) {
         return listeners.contains(o);
     }
 
+    @Override
     public boolean registerListener(StorageListener e) {
         return listeners.add(e);
     }
 
+    @Override
     public boolean unregisterListener(StorageListener o) {
         return listeners.remove(o);
-    }
-
-    public static interface StorageListener {
-        //TODO update Listeners
-
-        public void fileDeleted(Download download, Path child);
-
-        public void fileUpdated(Download download, Path child);
     }
 
     public static Map<String, Object> zipFSOptions(boolean create) {

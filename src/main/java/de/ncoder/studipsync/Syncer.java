@@ -2,7 +2,7 @@ package de.ncoder.studipsync;
 
 import de.ncoder.studipsync.data.Download;
 import de.ncoder.studipsync.data.Seminar;
-import de.ncoder.studipsync.storage.LocalStorage;
+import de.ncoder.studipsync.storage.Storage;
 import de.ncoder.studipsync.studip.StudipAdapter;
 import de.ncoder.studipsync.studip.StudipException;
 import org.slf4j.Marker;
@@ -15,8 +15,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.sql.Date;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
@@ -27,11 +27,11 @@ import static de.ncoder.studipsync.studip.StudipAdapter.PAGE_DOWNLOADS_LATEST;
 
 public class Syncer {
     private final StudipAdapter adapter;
-    private final LocalStorage storage;
+    private final Storage storage;
     private final ReentrantLock browserLock = new ReentrantLock();
     private final ThreadLocal<Marker> marker = new ThreadLocal<>();
 
-    public Syncer(StudipAdapter adapter, LocalStorage storage) {
+    public Syncer(StudipAdapter adapter, Storage storage) {
         this.adapter = adapter;
         this.storage = storage;
     }
@@ -210,7 +210,7 @@ public class Syncer {
         return adapter;
     }
 
-    public LocalStorage getStorage() {
+    public Storage getStorage() {
         return storage;
     }
 }
