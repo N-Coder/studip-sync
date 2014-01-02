@@ -16,7 +16,7 @@ import static de.ncoder.studipsync.Values.LOG_DOWNLOAD;
 import static de.ncoder.studipsync.studip.StudipAdapter.ZIP_ENCODING;
 
 public class LocalStorage implements Storage {
-    private PathResolver resolverDelegate = StandardPathResolver.ResolveByHash;
+    private PathResolver resolverDelegate = StandardPathResolver.ByHash;
     private final Path root;
     private final List<StorageListener> listeners = new LinkedList<>();
     private transient FileSystem underlyingFS;

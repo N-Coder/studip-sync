@@ -9,19 +9,19 @@ import static de.ncoder.studipsync.studip.StudipAdapter.URI_ILLEGAL_CHARS;
 import static de.ncoder.studipsync.studip.StudipAdapter.URI_REPLACE_CHARS;
 
 public enum StandardPathResolver implements PathResolver {
-    ResolveByID() {
+    ByID() {
         @Override
         public Path resolve(Path root, Seminar seminar) {
             return root.resolve(seminar.getID());
         }
     },
-    ResolveByHash() {
+    ByHash() {
         @Override
         public Path resolve(Path root, Seminar seminar) {
             return root.resolve(seminar.getHash());
         }
     },
-    ResolveByName() {
+    ByName() {
         @Override
         public Path resolve(Path root, Seminar seminar) {
             String name = seminar.getFullName();
