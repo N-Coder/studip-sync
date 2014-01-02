@@ -1,6 +1,7 @@
 package de.ncoder.studipsync;
 
 import de.ncoder.studipsync.storage.StandardPathResolver;
+import de.ncoder.studipsync.ui.StandardUIAdapter;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.slf4j.Logger;
@@ -35,15 +36,11 @@ public class Values {
     public static final String OPTION_EXCLUDE = "x";
     public static final String OPTION_TIMEOUT = "t";
 
-    public static enum UIType {
-        SWING, CMD
-    }
-
     static {
         OPTIONS = new Options();
         OPTIONS.addOption(Option.builder(OPTION_UI)
                 .hasArg()
-                .argName(Arrays.toString(UIType.values()) + " or Java Classname")
+                .argName(Arrays.toString(StandardUIAdapter.values()) + " or Java Classname")
                 .desc("how to prompt for login data")
                         //.type(UIOption.class)
                 .build());
