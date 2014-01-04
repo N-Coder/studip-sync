@@ -68,9 +68,11 @@ public class Starter {
             }
         });
 
-        return new Syncer(
+        Syncer syncer = new Syncer(
                 browser,
                 storage
         );
+        syncer.setCheckLevel(options.getCheckLevel());
+        return syncer;
     }
 }

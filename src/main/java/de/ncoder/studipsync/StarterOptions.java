@@ -15,6 +15,8 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 
+import static de.ncoder.studipsync.Syncer.CheckLevel.*;
+
 public class StarterOptions {
     public static final int DEFAULT_TIMEOUT = (int) TimeUnit.SECONDS.toMillis(2);
     public static final Path DEFAULT_CACHE_PATH = Paths.get(System.getProperty("user.dir"), "studip.zip");
@@ -28,7 +30,7 @@ public class StarterOptions {
     public static final String OPTION_CHECK_LEVEL = "c";
     public static final String OPTION_COOKIES = "l";
     public static final String OPTION_NO_COOKIES = "k";
-    public static final String OPTION_PATH_REOLVER = "n";
+    public static final String OPTION_PATH_RESOLVER = "n";
     public static final String OPTION_EXCLUDE = "x";
     public static final String OPTION_TIMEOUT = "t";
 
@@ -63,7 +65,7 @@ public class StarterOptions {
                 .longOpt("cookies")
                 .desc("File used for storing cookies.")
                 .build());
-        OPTIONS.addOption(Option.builder(OPTION_PATH_REOLVER)
+        OPTIONS.addOption(Option.builder(OPTION_PATH_RESOLVER)
                 .hasArg()
                 .longOpt("naming")
                 .desc("Naming Strategy for downloaded files.\n" +
@@ -77,11 +79,16 @@ public class StarterOptions {
                 .build());
         OPTIONS.addOption(Option.builder(OPTION_CHECK_LEVEL) //TODO implement check levels
                 .hasArg()
-                .argName("1-10")
+                .argName("level")
                 .type(Number.class)
                 .longOpt("check")
-                .desc("Check strictness:\n" +
-                        "Currently not implemented.")
+                .desc("Synchronicity check strictness:\n" +
+                        None.ordinal() + ". " + None + ":\tDon't check at all\n" +
+                        Count.ordinal() + ". " + Count + ":\tOnly check the number of files\n" +
+                        Files.ordinal() + ". " + Files + ":\tCheck for matching filenames\n" +
+                        ModTime.ordinal() + ". " + ModTime + ":\tCheck for matching last modified times\n" +
+                        "X. " + All + ":\tPerform all checks"
+                )
                 .build());
         OPTIONS.addOption(Option.builder(OPTION_EXCLUDE) //TODO implement filtering
                 .hasArg()
@@ -101,38 +108,34 @@ public class StarterOptions {
 
     // ------------------------------------------------------------------------
 
-    private int timeoutMs;
     private Path cachePath;
     private Path cookiesPath;
+    private int timeoutMs;
+    private Syncer.CheckLevel checkLevel;
     private UIAdapter uiAdapter;
     private PathResolver pathResolver;
 
     public StarterOptions() {
         this(
-                DEFAULT_TIMEOUT,
                 DEFAULT_CACHE_PATH,
                 DEFAULT_COOKIES_PATH,
+                DEFAULT_TIMEOUT,
+                Syncer.CheckLevel.Default,
                 StandardUIAdapter.getDefaultUIAdapter(),
                 StandardPathResolver.getDefaultPathResolver()
         );
     }
 
-    public StarterOptions(int timeoutMs, Path cachePath, Path cookiesPath, UIAdapter uiAdapter, PathResolver pathResolver) {
-        this.uiAdapter = uiAdapter;
-        this.pathResolver = pathResolver;
-        this.timeoutMs = timeoutMs;
+    public StarterOptions(Path cachePath, Path cookiesPath, int timeoutMs, Syncer.CheckLevel checkLevel, UIAdapter uiAdapter, PathResolver pathResolver) {
         this.cachePath = cachePath;
         this.cookiesPath = cookiesPath;
+        this.timeoutMs = timeoutMs;
+        this.checkLevel = checkLevel;
+        this.uiAdapter = uiAdapter;
+        this.pathResolver = pathResolver;
     }
 
     public void set(CommandLine cmd) throws ParseException {
-        if (cmd.hasOption(OPTION_TIMEOUT)) {
-            try {
-                setTimeoutMs(Integer.parseInt(cmd.getOptionValue(OPTION_TIMEOUT)));
-            } catch (NumberFormatException e) {
-                throw new ParseException(e.getMessage());
-            }
-        }
         if (cmd.hasOption(OPTION_OUT)) {
             setCachePath(Paths.get(cmd.getOptionValue(OPTION_OUT)));
         }
@@ -142,20 +145,22 @@ public class StarterOptions {
         if (cmd.hasOption(OPTION_NO_COOKIES)) {
             setCookiesPath(null);
         }
+        if (cmd.hasOption(OPTION_TIMEOUT)) {
+            try {
+                setTimeoutMs(Integer.parseInt(cmd.getOptionValue(OPTION_TIMEOUT)));
+            } catch (NumberFormatException e) {
+                throw new ParseException(e.getMessage());
+            }
+        }
+        if (cmd.hasOption(OPTION_CHECK_LEVEL)) {
+            setCheckLevel(Syncer.CheckLevel.get(cmd.getOptionValue(OPTION_CHECK_LEVEL)));
+        }
         if (cmd.hasOption(OPTION_UI)) {
             setUIAdapter(StandardUIAdapter.getUIAdapter(cmd.getOptionValue(OPTION_UI)));
         }
-        if (cmd.hasOption(OPTION_PATH_REOLVER)) {
-            setPathResolver(StandardPathResolver.getPathResolver(cmd.getOptionValue(OPTION_PATH_REOLVER)));
+        if (cmd.hasOption(OPTION_PATH_RESOLVER)) {
+            setPathResolver(StandardPathResolver.getPathResolver(cmd.getOptionValue(OPTION_PATH_RESOLVER)));
         }
-    }
-
-    public int getTimeoutMs() {
-        return timeoutMs;
-    }
-
-    public void setTimeoutMs(int timeoutMs) {
-        this.timeoutMs = timeoutMs;
     }
 
     public Path getCachePath() {
@@ -172,6 +177,22 @@ public class StarterOptions {
 
     public void setCookiesPath(Path cookiesPath) {
         this.cookiesPath = cookiesPath;
+    }
+
+    public int getTimeoutMs() {
+        return timeoutMs;
+    }
+
+    public void setTimeoutMs(int timeoutMs) {
+        this.timeoutMs = timeoutMs;
+    }
+
+    public Syncer.CheckLevel getCheckLevel() {
+        return checkLevel;
+    }
+
+    public void setCheckLevel(Syncer.CheckLevel checkLevel) {
+        this.checkLevel = checkLevel;
     }
 
     public UIAdapter getUIAdapter() {
@@ -193,11 +214,12 @@ public class StarterOptions {
     @Override
     public String toString() {
         return "Options{\n" +
-                "\ttimeoutMs=" + timeoutMs + ",\n" +
                 "\tcachePath=" + cachePath + ",\n" +
-                "\tcookiesPath=" + cookiesPath + "\n" +
-                "\t, uiAdapter=" + uiAdapter + "\n" +
-                "\t, pathResolver=" + pathResolver + "\n" +
+                "\tcookiesPath=" + cookiesPath + ",\n" +
+                "\ttimeoutMs=" + timeoutMs + ",\n" +
+                "\tcheckLevel=" + checkLevel + ",\n" +
+                "\tuiAdapter=" + uiAdapter + ",\n" +
+                "\tpathResolver=" + pathResolver + ",\n" +
                 '}';
     }
 }

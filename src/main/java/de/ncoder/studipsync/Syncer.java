@@ -5,6 +5,7 @@ import de.ncoder.studipsync.data.Seminar;
 import de.ncoder.studipsync.storage.Storage;
 import de.ncoder.studipsync.studip.StudipAdapter;
 import de.ncoder.studipsync.studip.StudipException;
+import org.apache.commons.cli.ParseException;
 import org.slf4j.Marker;
 import org.slf4j.MarkerFactory;
 
@@ -30,6 +31,7 @@ public class Syncer {
     private final Storage storage;
     private final ReentrantLock browserLock = new ReentrantLock();
     private final ThreadLocal<Marker> marker = new ThreadLocal<>();
+    private CheckLevel checkLevel;
 
     public Syncer(StudipAdapter adapter, Storage storage) {
         this.adapter = adapter;
@@ -140,22 +142,25 @@ public class Syncer {
     }
 
     public boolean isSeminarInSync(Seminar seminar) throws IOException, StudipException {
-        //TODO throw checked Exception instead of logging
-        final List<Download> downloads = adapter.parseDownloads(PAGE_DOWNLOADS_LATEST, false);
+        if (!checkLevel.includes(CheckLevel.Count)) {
+            return true;
+        }
 
+        //List downloads
+        final List<Download> downloads = adapter.parseDownloads(PAGE_DOWNLOADS_LATEST, false);
         if (downloads.isEmpty()) {
             //No downloads - nothing to do
             return true;
         }
 
+        //List local files
         final List<Path> localFiles = new LinkedList<>();
-        Path storagePath = storage.resolve(seminar);
+        final Path storagePath = storage.resolve(seminar);
         if (!Files.exists(storagePath)) {
-            //No local data despite available downloads
+            //No local files despite available downloads
             LOG_SYNCER.info(marker.get(), "Seminar is empty!");
             return false;
         }
-
         Files.walkFileTree(storagePath, new SimpleFileVisitor<Path>() {
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
@@ -163,6 +168,8 @@ public class Syncer {
                 return FileVisitResult.CONTINUE;
             }
         });
+
+        //Count local files
         if (localFiles.size() < downloads.size()) {
             // Missing files
             LOG_SYNCER.warn(marker.get(), "Seminar has only " + localFiles.size() + " local files of " + downloads.size() + " online files.");
@@ -172,18 +179,35 @@ public class Syncer {
             LOG_SYNCER.debug(marker.get(), "Seminar has deleted files left! " + localFiles.size() + " local files and " + downloads.size() + " online files.");
         }
 
+        //Check local files
+        if (!areFilesInSync(downloads, localFiles)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    public boolean areFilesInSync(List<Download> downloads, List<Path> localFiles) throws IOException {
+        if (!checkLevel.includes(CheckLevel.Files)) {
+            return true;
+        }
         for (Download download : downloads) {
+            //Find matching candidates
             List<Path> localCandidates = new LinkedList<>();
             for (Path local : localFiles) {
+                // Check name for candidates
                 // TODO check path instead name (names may be equal in different folders)
                 if (local.getName(local.getNameCount() - 1).toString().equals(download.getFileName())) {
                     if (!localCandidates.isEmpty()) {
                         //Already found a candidate
                         LOG_SYNCER.debug(marker.get(), "Local files " + localCandidates + " and " + local + " match " + download + "!");
-                        //return false; // TODO add assume clean for conflicting files
                     }
                     localCandidates.add(local);
 
+                    //Check LastModifiedTime
+                    if (!checkLevel.includes(CheckLevel.ModTime)) {
+                        continue;
+                    }
                     Date localLastMod = new Date(Files.getLastModifiedTime(local).toMillis());
                     if (!localLastMod.after(download.getLastModified())) {
                         //Candidate *potentially* outdated
@@ -192,6 +216,8 @@ public class Syncer {
                     }
                 }
             }
+
+            //Require at least one candidate
             if (localCandidates.isEmpty()) {
                 //No candidates found
                 LOG_SYNCER.warn(marker.get(), "No local file matching " + download + " (~" + download.getFileName() + ")!");
@@ -212,5 +238,46 @@ public class Syncer {
 
     public Storage getStorage() {
         return storage;
+    }
+
+    public CheckLevel getCheckLevel() {
+        return checkLevel;
+    }
+
+    public void setCheckLevel(CheckLevel checkLevel) {
+        this.checkLevel = checkLevel;
+    }
+
+    public static enum CheckLevel implements Comparable<CheckLevel> {
+        None,
+        Count,
+        Files,
+        ModTime,
+        All;
+
+        public static CheckLevel Default = All;
+
+        public static CheckLevel get(String level) throws ParseException {
+            if (level != null) {
+                try {
+                    return valueOf(level);
+                } catch (IllegalArgumentException earg) {
+                    try {
+                        return CheckLevel.values()[Integer.parseInt(level)];
+                    } catch (NumberFormatException enumb) {
+                        ParseException pe = new ParseException(level + " is not a CheckLevel.");
+                        pe.initCause(earg);
+                        pe.addSuppressed(enumb);
+                        throw pe;
+                    }
+                }
+            } else {
+                return Default;
+            }
+        }
+
+        public boolean includes(CheckLevel other) {
+            return compareTo(other) >= 0;
+        }
     }
 }
