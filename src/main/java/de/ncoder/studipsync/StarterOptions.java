@@ -77,7 +77,7 @@ public class StarterOptions {
                 .desc("Delete all local data and resynchronize everything.")
                 .longOpt("reset")
                 .build());
-        OPTIONS.addOption(Option.builder(OPTION_CHECK_LEVEL) //TODO implement check levels
+        OPTIONS.addOption(Option.builder(OPTION_CHECK_LEVEL)
                 .hasArg()
                 .argName("level")
                 .type(Number.class)
@@ -87,7 +87,7 @@ public class StarterOptions {
                         Count.ordinal() + ". " + Count + ":\tOnly check the number of files\n" +
                         Files.ordinal() + ". " + Files + ":\tCheck for matching filenames\n" +
                         ModTime.ordinal() + ". " + ModTime + ":\tCheck for matching last modified times\n" +
-                        "X. " + All + ":\tPerform all checks"
+                        "X. " + All + ":     Perform all checks\n"
                 )
                 .build());
         OPTIONS.addOption(Option.builder(OPTION_EXCLUDE) //TODO implement filtering

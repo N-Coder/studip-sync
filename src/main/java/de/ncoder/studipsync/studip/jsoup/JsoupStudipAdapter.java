@@ -6,6 +6,8 @@ import de.ncoder.studipsync.data.Seminar;
 import de.ncoder.studipsync.studip.StudipAdapter;
 import de.ncoder.studipsync.studip.StudipException;
 import de.ncoder.studipsync.ui.UIAdapter;
+import org.json.simple.JSONValue;
+import org.json.simple.parser.JSONParser;
 import org.jsoup.Connection;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.TextNode;
@@ -16,6 +18,7 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -260,9 +263,8 @@ public class JsoupStudipAdapter implements StudipAdapter {
             if (Files.exists(cookiesPath)) {
                 Files.delete(cookiesPath);
             }
-            //TODO use JSON serialization
-            try (ObjectOutputStream oos = new ObjectOutputStream(Files.newOutputStream(cookiesPath))) {
-                oos.writeObject(con.request().cookies());
+            try (Writer w = Files.newBufferedWriter(cookiesPath, Charset.defaultCharset())) {
+                w.write(JSONValue.toJSONString(con.request().cookies()));
             }
         }
     }
@@ -271,13 +273,10 @@ public class JsoupStudipAdapter implements StudipAdapter {
     public void restoreCookies() throws IOException {
         if (cookiesPath != null) {
             LOG_NAVIGATE.info("Restore Cookies");
-            try (ObjectInputStream ois = new ObjectInputStream(Files.newInputStream(cookiesPath))) {
-                Object o = ois.readObject();
-                if (!(o instanceof Map)) {
-                    throw new IOException("Illegal data " + o + " in cookies file " + cookiesPath);
-                }
+            try (Reader r = Files.newBufferedReader(cookiesPath, Charset.defaultCharset())) {
+                Object o = new JSONParser().parse(r);
                 con.request().cookies().putAll((Map) o);
-            } catch (ClassNotFoundException | ClassCastException e) {
+            } catch (org.json.simple.parser.ParseException | ClassCastException e) {
                 throw new IOException("Illegal data in cookies file " + cookiesPath, e);
             }
         }
