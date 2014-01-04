@@ -2,6 +2,7 @@ package de.ncoder.studipsync.ui;
 
 import de.ncoder.studipsync.data.LoginData;
 import de.ncoder.studipsync.ui.swing.LoginDialog;
+import org.apache.commons.cli.ParseException;
 
 import java.awt.*;
 import java.io.Console;
@@ -62,6 +63,52 @@ public enum StandardUIAdapter implements UIAdapter {
             LOG_MAIN.info("Page dump written to\n" + uri);
         }
     };
+
+    // --------------------------------
+
+    public static UIAdapter getDefaultUIAdapter() {
+        if (System.console() != null) {
+            return CMD;
+        } else {
+            return SWING;
+        }
+    }
+
+    public static UIAdapter getUIAdapter(String type) throws ParseException {
+        if (type != null) {
+            try {
+                StandardUIAdapter ui = valueOf(type);
+                ui.init();
+                return ui;
+            } catch (IllegalArgumentException earg) {
+                try {
+                    return loadUIAdapter(type);
+                } catch (ClassNotFoundException eclass) {
+                    ParseException pe = new ParseException(type + " is neither an UIType nor can it be resolved to a Java class.");
+                    pe.initCause(eclass);
+                    pe.addSuppressed(earg);
+                    throw pe;
+                }
+            }
+        } else {
+            return getDefaultUIAdapter();
+        }
+    }
+
+    public static UIAdapter loadUIAdapter(String classname) throws ParseException, ClassNotFoundException {
+        try {
+            Class<?> clazz = Class.forName(classname);
+            Object instance = clazz.newInstance();
+            if (!(instance instanceof UIAdapter)) {
+                throw new ParseException(instance + " is not an UI adapter");
+            }
+            return (UIAdapter) instance;
+        } catch (InstantiationException | IllegalAccessException e) {
+            ParseException pe = new ParseException("Could not instantiate class " + classname + ". " + e.getMessage());
+            pe.initCause(e);
+            throw pe;
+        }
+    }
 
     public void init() {
     }

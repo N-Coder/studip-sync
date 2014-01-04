@@ -13,6 +13,7 @@ import java.nio.file.attribute.FileTime;
 import java.util.*;
 
 import static de.ncoder.studipsync.Values.LOG_DOWNLOAD;
+import static de.ncoder.studipsync.Values.LOG_MAIN;
 import static de.ncoder.studipsync.studip.StudipAdapter.ZIP_ENCODING;
 
 public class LocalStorage implements Storage {
@@ -223,5 +224,32 @@ public class LocalStorage implements Storage {
         options.put("create", create + "");
         options.put("encoding", ZIP_ENCODING);
         return options;
+    }
+
+    // --------------------------------RESET-----------------------------------
+
+    public static void reset(Path cachePath, Path cookiesPath) throws IOException {
+        LOG_MAIN.info("Resetting");
+        if (cookiesPath != null && Files.exists(cookiesPath)) {
+            Files.delete(cookiesPath);
+        }
+        if (Files.isDirectory(cachePath)) {
+            Files.walkFileTree(cachePath, new SimpleFileVisitor<Path>() {
+                @Override
+                public FileVisitResult visitFile(Path subpath, BasicFileAttributes attrs) throws IOException {
+                    Files.delete(subpath);
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                    Files.delete(dir);
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } else if (Files.exists(cachePath)) {
+            Files.delete(cachePath);
+        }
+        LOG_MAIN.info("Reset completed");
     }
 }
