@@ -6,9 +6,6 @@ import org.apache.commons.cli.ParseException;
 
 import java.nio.file.Path;
 
-import static de.ncoder.studipsync.studip.StudipAdapter.URI_ILLEGAL_CHARS;
-import static de.ncoder.studipsync.studip.StudipAdapter.URI_REPLACE_CHARS;
-
 public enum StandardPathResolver implements PathResolver {
     ByID() {
         @Override
@@ -26,11 +23,18 @@ public enum StandardPathResolver implements PathResolver {
         @Override
         public Path resolve(Path root, Seminar seminar) {
             String name = seminar.getFullName();
-            for (int i = 0; i < URI_ILLEGAL_CHARS.length; i++) {
-                name = name.replace(URI_ILLEGAL_CHARS[i], URI_REPLACE_CHARS[i]);
+            //Remove illegal chars
+            for (int i = 0; i < FILE_ILLEGAL_CHARS.length; i++) {
+                name = name.replace(FILE_ILLEGAL_CHARS[i], '_');
             }
+            //Fix spaces
+            name = name.replaceAll("[_ ]+", " ");
             return root.resolve(name);
         }
+    };
+
+    public static final char[] FILE_ILLEGAL_CHARS = new char[]{
+            '%', '*', ',', ':', '?', '"', '|', '\\', '/', '<', '>', '[', ']'
     };
 
     @Override
