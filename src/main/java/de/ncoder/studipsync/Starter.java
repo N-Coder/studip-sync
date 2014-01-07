@@ -30,7 +30,6 @@ public class Starter {
                 log.info("Finished");
             } finally {
                 syncer.close();
-                //FIXME AWT Event Queue blocks termination with modality level 1
             }
         } catch (ParseException e) {
             System.out.println("Illegal arguments passed. " + e.getMessage());
@@ -41,6 +40,8 @@ public class Starter {
                 formatter.printHelp("studip-sync", OPTIONS);
             }
         }
+        //TODO AWT Event Queue blocks termination with modality level 1
+        System.exit(0);
     }
 
     public static Syncer createSyncer(CommandLine cmd) throws IOException, ParseException {

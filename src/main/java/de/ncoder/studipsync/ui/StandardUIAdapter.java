@@ -15,20 +15,24 @@ public enum StandardUIAdapter implements UIAdapter {
         private final Logger log = LoggerFactory.getLogger(this.toString());
 
         private int loginTries = -1;
+        private LoginDialog dialog;
 
         @Override
         public void init() {
-            try {
-                javax.swing.UIManager.setLookAndFeel(javax.swing.UIManager.getSystemLookAndFeelClassName());
-            } catch (Exception e) {
-                log.warn("Can't set Look and Feel for Swing UI", e);
+            if (dialog == null) {
+                try {
+                    javax.swing.UIManager.setLookAndFeel(javax.swing.UIManager.getSystemLookAndFeelClassName());
+                } catch (Exception e) {
+                    log.warn("Can't set Look and Feel for Swing UI", e);
+                }
+                dialog = new LoginDialog();
             }
         }
 
         @Override
         public LoginData requestLoginData() {
-            loginTries++;
-            return new LoginDialog(loginTries > 0).requestLoginData();
+            dialog.setLoginFailed(loginTries++ > 0);
+            return dialog.requestLoginData();
         }
 
         public void displayWebpage(URI uri) {
@@ -42,6 +46,14 @@ public enum StandardUIAdapter implements UIAdapter {
             } else {
                 log.warn("No Browser available");
             }
+        }
+
+        @Override
+        public void close() {
+            if (dialog != null) {
+                dialog.dispose();
+            }
+            super.close();
         }
     },
     CMD() {
@@ -72,8 +84,10 @@ public enum StandardUIAdapter implements UIAdapter {
 
     public static UIAdapter getDefaultUIAdapter() {
         if (System.console() != null) {
+            CMD.init();
             return CMD;
         } else {
+            SWING.init();
             return SWING;
         }
     }

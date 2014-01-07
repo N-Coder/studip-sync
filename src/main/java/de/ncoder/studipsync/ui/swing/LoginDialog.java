@@ -5,7 +5,7 @@ import de.ncoder.studipsync.data.LoginData;
 import javax.swing.*;
 import java.awt.event.*;
 
-public class LoginDialog extends JDialog {
+public class LoginDialog extends JFrame {
     private JPanel contentPane;
     private JButton buttonOK;
     private JButton buttonCancel;
@@ -15,12 +15,8 @@ public class LoginDialog extends JDialog {
     private boolean accepted = false;
 
     public LoginDialog() {
-        this(false);
-    }
-
-    public LoginDialog(boolean loginFailed) {
         setContentPane(contentPane);
-        setModal(true);
+        //setModal(false);
         getRootPane().setDefaultButton(buttonOK);
         setTitle("StudIP Login");
 
@@ -37,7 +33,7 @@ public class LoginDialog extends JDialog {
         });
 
         // call onCancel() when cross is clicked
-        setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
+        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
             public void windowClosing(WindowEvent e) {
                 onCancel();
@@ -50,34 +46,56 @@ public class LoginDialog extends JDialog {
                 onCancel();
             }
         }, KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
-
-        if (loginFailed) {
-            labelError.setText("Invalid username or password");
-            labelError.setVisible(true);
-        }
     }
 
     public LoginData requestLoginData() {
         try {
             pack();
             setVisible(true);
+            awaitClose();
             if (accepted) {
                 return new LoginData(username.getText(), password.getPassword());
             } else {
                 return null;
             }
         } finally {
+            setVisible(false);
             dispose();
+        }
+    }
+
+    public void setLoginFailed(boolean failed) {
+        if (failed) {
+            labelError.setText("Invalid username or password");
+        }
+        labelError.setVisible(failed);
+    }
+
+    private void awaitClose() {
+        synchronized (this) {
+            while (isVisible()) {
+                try {
+                    this.wait(500);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
         }
     }
 
     private void onOK() {
         accepted = true;
         setVisible(false);
+        synchronized (this) {
+            this.notifyAll();
+        }
     }
 
     private void onCancel() {
         accepted = false;
         setVisible(false);
+        synchronized (this) {
+            this.notifyAll();
+        }
     }
 }
