@@ -98,7 +98,7 @@ public class LocalStorage implements Storage {
     @Override
     public void store(Download download, Path dataSrc, boolean isDiff) throws IOException {
         Path dstPath = resolve(download);
-        log.info(download + " <<" + (isDiff ? "DIF" : "ABS") + "<< " + dataSrc);
+        log.debug(download + " <<" + (isDiff ? "DIF" : "ABS") + "<< " + dataSrc);
         if (!isDiff) {
             delete(download, dstPath);
         }

@@ -1,6 +1,7 @@
 package de.ncoder.studipsync;
 
 import de.ncoder.studipsync.storage.LocalStorage;
+import de.ncoder.studipsync.storage.StorageLog;
 import de.ncoder.studipsync.studip.jsoup.JsoupStudipAdapter;
 import org.apache.commons.cli.*;
 import org.slf4j.Logger;
@@ -24,9 +25,12 @@ public class Starter {
             }
 
             Syncer syncer = createSyncer(cmd);
+            StorageLog storeLog = new StorageLog();
+            syncer.getStorage().registerListener(storeLog);
             try {
                 log.info("Started");
                 syncer.sync();
+                log.info(storeLog.getStatusMessage());
                 log.info("Finished");
             } finally {
                 syncer.close();
