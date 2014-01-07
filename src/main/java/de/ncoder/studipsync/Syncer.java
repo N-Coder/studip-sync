@@ -104,7 +104,7 @@ public class Syncer {
             //Find downloads
             log.info(marker, seminar.getFullName() + (forceAbsolute ? ", absolute" : ""));
             List<Download> downloads = getDownloads(seminar);
-            log.info(marker, "  Found " + downloads.size() + " downloadable files");
+            log.info(marker, "\tFound " + downloads.size() + " downloadable file" + (downloads.size() != 1 ? "s" : ""));
             boolean wasAbsolute = syncDownloads(downloads, forceAbsolute);
 
             //Check downloads
@@ -119,7 +119,7 @@ public class Syncer {
     }
 
     /**
-     * @return hasDiff, true if at least one download was not absolutely synchronized
+     * @return wasAbsolute, true if at every download was absolutely synchronized
      */
     public boolean syncDownloads(List<Download> downloads, boolean forceAbsolute) throws StudipException {
         boolean wasAbsolute = true;
@@ -132,17 +132,17 @@ public class Syncer {
                         //Absolute forced
                         downloadDiff = false;
                         src = startDownload(download, false);
-                        log.info(marker, "  abs: " + download.getFileName());
+                        log.info(marker, "\tabs: " + download.getFileName());
                     } else if (download.isChanged()) {
                         //Changed data
                         downloadDiff = true;
                         src = startDownload(download, true);
-                        log.info(marker, "  par: " + download.getFileName());
+                        log.info(marker, "\tpar: " + download.getFileName());
                     } else {
                         //Nothing changed
                         downloadDiff = true;
                         src = null;
-                        log.info(marker, "  ign: " + download.getFileName());
+                        log.info(marker, "\tign: " + download.getFileName());
                     }
                     if (src != null) {
                         storage.store(download, src, downloadDiff);
@@ -209,11 +209,11 @@ public class Syncer {
         //Count local files
         if (localFiles.size() < downloads.size()) {
             // Missing files
-            log.warn(marker, "Seminar has only " + localFiles.size() + " local files of " + downloads.size() + " online files.");
+            log.warn(marker, "Seminar has only " + localFiles.size() + " local file(s) of " + downloads.size() + " online file(s).");
             return false;
         } else {
             // Ignore surplus files
-            log.debug(marker, "Seminar has deleted files left! " + localFiles.size() + " local files and " + downloads.size() + " online files.");
+            log.debug(marker, "Seminar has deleted file(s) left! " + localFiles.size() + " local file(s) and " + downloads.size() + " online file(s).");
         }
 
         //Check local files

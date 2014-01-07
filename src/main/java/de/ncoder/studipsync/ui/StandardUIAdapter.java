@@ -31,7 +31,7 @@ public enum StandardUIAdapter implements UIAdapter {
 
         @Override
         public LoginData requestLoginData() {
-            dialog.setLoginFailed(loginTries++ > 0);
+            dialog.setLoginFailed(++loginTries > 0);
             return dialog.requestLoginData();
         }
 
@@ -68,6 +68,7 @@ public enum StandardUIAdapter implements UIAdapter {
         @Override
         public LoginData requestLoginData() {
             Console console = System.console();
+            console.printf("Please login in.");
             console.printf("Username: ");
             String username = console.readLine();
             char password[] = console.readPassword("Password: ");

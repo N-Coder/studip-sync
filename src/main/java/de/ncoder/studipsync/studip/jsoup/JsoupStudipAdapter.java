@@ -144,6 +144,7 @@ public class JsoupStudipAdapter implements StudipAdapter {
                 restoreCookies();
                 navigate(PAGE_BASE);
             } else {
+                log.info("Requesting login data.");
                 LoginData login = ui.requestLoginData();
                 if (login != null) {
                     doLogin(login);
