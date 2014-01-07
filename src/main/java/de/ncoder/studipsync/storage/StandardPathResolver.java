@@ -5,6 +5,8 @@ import de.ncoder.studipsync.data.Seminar;
 import org.apache.commons.cli.ParseException;
 
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
 
 public enum StandardPathResolver implements PathResolver {
     ByID() {
@@ -31,7 +33,28 @@ public enum StandardPathResolver implements PathResolver {
             name = name.replaceAll("[_ ]+", " ");
             return root.resolve(name);
         }
+    },
+    Natural() {
+        @Override
+        public Path resolve(Path root, Seminar seminar) {
+            return ByName.resolve(root, seminar);
+        }
+
+        @Override
+        public Path resolve(Path root, Download download) {
+            String path = download.getPath();
+            int slash = path.indexOf('/');
+            slash = slash >= 0 ? slash : path.length() - 1;
+            while (IGNORED_FOLDERS.contains(path.substring(0, slash))) {
+                path = path.substring(slash + 1);
+            }
+            return resolve(root, download.getSeminar()).resolve(path);
+        }
     };
+
+    public static final List<String> IGNORED_FOLDERS = Arrays.asList(
+            "Allgemeiner_Dateiordner", "Hauptordner"
+    );
 
     public static final char[] FILE_ILLEGAL_CHARS = new char[]{
             '%', '*', ',', ':', '?', '"', '|', '\\', '/', '<', '>', '[', ']'
