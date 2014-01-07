@@ -41,21 +41,44 @@ public class Syncer {
         this.storage = storage;
     }
 
+    public void init() throws StudipException {
+        browserLock.lock();
+        try {
+            adapter.init();
+            adapter.doLogin();
+        } finally {
+            browserLock.unlock();
+        }
+    }
+
+    public void close() throws IOException {
+        browserLock.lock();
+        try {
+            adapter.close();
+        } finally {
+            browserLock.unlock();
+        }
+        storage.close();
+    }
+
     public synchronized void sync() throws StudipException, InterruptedException {
         final List<Seminar> seminars;
 
         //Access seminars
         browserLock.lock();
-        adapter.init();
-        adapter.doLogin();
         try {
-            seminars = adapter.parseSeminars();
+            init();
+            seminars = getSeminars();
         } finally {
             browserLock.unlock();
         }
         log.info(seminars.size() + " seminars");
 
-        //Find seminars
+        //Sync seminars
+        sync(seminars);
+    }
+
+    public synchronized void sync(List<Seminar> seminars) throws StudipException, InterruptedException {
         List<StudipException> exceptions = new ArrayList<>();
         for (Seminar seminar : seminars) {
             marker = MarkerFactory.getMarker(seminar.getID());
@@ -79,62 +102,13 @@ public class Syncer {
     public void syncSeminar(final Seminar seminar, boolean forceAbsolute) throws StudipException {
         try {
             //Find downloads
-            boolean hasDiff = false;
-            browserLock.lock();
-            try {
-                log.info(marker, seminar.getFullName() + (forceAbsolute ? ", absolute" : ""));
-                adapter.selectSeminar(seminar);
-                List<Download> downloads = adapter.parseDownloads(PAGE_DOWNLOADS, true);
-                log.info(marker, "  Found " + downloads.size() + " downloadable files");
-                for (final Download download : downloads) {
-                    if (download.getLevel() == 0) {
-                        try {
-                            final InputStream src;
-                            final boolean downloadDiff;
-                            if (forceAbsolute) {
-                                //Absolute forced
-                                downloadDiff = false;
-                                src = adapter.startDownload(download, false);
-                                log.info(marker, "  abs: " + download.getFileName());
-                            } else if (download.isChanged()) {
-                                //Changed data
-                                downloadDiff = true;
-                                src = adapter.startDownload(download, true);
-                                log.info(marker, "  par: " + download.getFileName());
-                            } else {
-                                //Nothing changed
-                                downloadDiff = true;
-                                src = null;
-                                log.info(marker, "  ign: " + download.getFileName());
-                            }
-                            if (src != null) {
-                                storage.store(download, src, downloadDiff);
-                            }
-                            if (downloadDiff) {
-                                hasDiff = true;
-                            }
-                        } catch (IOException e) {
-                            log.warn(marker, "Couldn't download " + download, e);
-                            hasDiff = true;
-                        }
-                    }
-                }
-            } finally {
-                browserLock.unlock();
-            }
-            final boolean isAbsolute = !hasDiff || forceAbsolute; //final Version of hasDiff
+            log.info(marker, seminar.getFullName() + (forceAbsolute ? ", absolute" : ""));
+            List<Download> downloads = getDownloads(seminar);
+            log.info(marker, "  Found " + downloads.size() + " downloadable files");
+            boolean wasAbsolute = syncDownloads(downloads, forceAbsolute);
 
             //Check downloads
-            if (!isSeminarInSync(seminar)) {
-                log.info(marker, "NOT IN-SYNC");
-                if (isAbsolute) {
-                    throw new StudipException("Could not synchronize Seminar " + seminar + ". Local data is different from online data after full download.");
-                } else {
-                    syncSeminar(seminar, true);
-                }
-            } else {
-                log.info(marker, "FINISHED " + seminar.getName());
-            }
+            checkSeminar(seminar, wasAbsolute || forceAbsolute);
         } catch (IOException e) {
             throw new StudipException("Could not synchronize Seminar " + seminar + ".", e);
         } catch (StudipException ex) {
@@ -144,13 +118,73 @@ public class Syncer {
         }
     }
 
+    /**
+     * @return hasDiff, true if at least one download was not absolutely synchronized
+     */
+    public boolean syncDownloads(List<Download> downloads, boolean forceAbsolute) throws StudipException {
+        boolean wasAbsolute = true;
+        for (final Download download : downloads) {
+            if (download.getLevel() == 0) {
+                try {
+                    final boolean downloadDiff;
+                    final InputStream src;
+                    if (forceAbsolute) {
+                        //Absolute forced
+                        downloadDiff = false;
+                        src = startDownload(download, false);
+                        log.info(marker, "  abs: " + download.getFileName());
+                    } else if (download.isChanged()) {
+                        //Changed data
+                        downloadDiff = true;
+                        src = startDownload(download, true);
+                        log.info(marker, "  par: " + download.getFileName());
+                    } else {
+                        //Nothing changed
+                        downloadDiff = true;
+                        src = null;
+                        log.info(marker, "  ign: " + download.getFileName());
+                    }
+                    if (src != null) {
+                        storage.store(download, src, downloadDiff);
+                    }
+                    if (downloadDiff) {
+                        wasAbsolute = false;
+                    }
+                } catch (IOException e) {
+                    log.warn(marker, "Couldn't download " + download, e);
+                    wasAbsolute = false;
+                }
+            }
+        }
+        return wasAbsolute;
+    }
+
+    public void checkSeminar(Seminar seminar, boolean syncWasAbsolute) throws IOException, StudipException {
+        if (!isSeminarInSync(seminar)) {
+            log.info(marker, "NOT IN-SYNC");
+            if (syncWasAbsolute) {
+                throw new StudipException("Could not synchronize Seminar " + seminar + ". Local data is different from online data after full download.");
+            } else {
+                syncSeminar(seminar, true);
+            }
+        } else {
+            log.info(marker, "FINISHED " + seminar.getName());
+        }
+    }
+
     public boolean isSeminarInSync(Seminar seminar) throws IOException, StudipException {
         if (!checkLevel.includes(CheckLevel.Count)) {
             return true;
         }
 
         //List downloads
-        final List<Download> downloads = adapter.parseDownloads(PAGE_DOWNLOADS_LATEST, false);
+        final List<Download> downloads;
+        browserLock.lock();
+        try {
+            downloads = adapter.parseDownloads(PAGE_DOWNLOADS_LATEST, false);
+        } finally {
+            browserLock.unlock();
+        }
         if (downloads.isEmpty()) {
             //No downloads - nothing to do
             return true;
@@ -229,17 +263,32 @@ public class Syncer {
         return true;
     }
 
-    public void close() throws IOException {
-        adapter.close();
-        storage.close();
+    public List<Seminar> getSeminars() throws StudipException {
+        browserLock.lock();
+        try {
+            return adapter.parseSeminars();
+        } finally {
+            browserLock.unlock();
+        }
     }
 
-    public StudipAdapter getAdapter() {
-        return adapter;
+    public List<Download> getDownloads(Seminar seminar) throws StudipException {
+        browserLock.lock();
+        try {
+            adapter.selectSeminar(seminar);
+            return adapter.parseDownloads(PAGE_DOWNLOADS, true);
+        } finally {
+            browserLock.unlock();
+        }
     }
 
-    public Storage getStorage() {
-        return storage;
+    public InputStream startDownload(Download download, boolean diffOnly) throws StudipException, IOException {
+        browserLock.lock();
+        try {
+            return adapter.startDownload(download, diffOnly);
+        } finally {
+            browserLock.unlock();
+        }
     }
 
     public CheckLevel getCheckLevel() {
@@ -281,5 +330,13 @@ public class Syncer {
         public boolean includes(CheckLevel other) {
             return compareTo(other) >= 0;
         }
+    }
+
+    public StudipAdapter getAdapter() {
+        return adapter;
+    }
+
+    public Storage getStorage() {
+        return storage;
     }
 }
