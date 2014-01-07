@@ -1,6 +1,8 @@
 package de.ncoder.studipsync.data;
 
 import de.ncoder.studipsync.studip.StudipException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
@@ -10,11 +12,10 @@ import java.net.URLDecoder;
 import java.text.ParseException;
 import java.util.*;
 
-import static de.ncoder.studipsync.Values.LOG_DOWNLOAD;
 import static de.ncoder.studipsync.studip.StudipAdapter.*;
 
-// TODO improve parent hierarchy
 public class Download implements Serializable {
+    private static final Logger log = LoggerFactory.getLogger(Download.class);
     private static final Map<URL, Download> instances = new HashMap<>();
 
     private final URL url;
@@ -115,7 +116,7 @@ public class Download implements Serializable {
         try {
             name = URLDecoder.decode(name, URI_ENCODING);
         } catch (UnsupportedEncodingException e) {
-            LOG_DOWNLOAD.warn("Couldn't decode URL", e);
+            log.warn("Couldn't decode URL", e);
         }
         for (int i = 0; i < URI_ILLEGAL_CHARS.length; i++) {
             name = name.replace(URI_ILLEGAL_CHARS[i], URI_REPLACE_CHARS[i]);

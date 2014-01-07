@@ -12,6 +12,8 @@ import org.jsoup.Connection;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.TextNode;
 import org.jsoup.select.Elements;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.net.HttpURLConnection;
@@ -28,10 +30,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
 
-import static de.ncoder.studipsync.Values.LOG_NAVIGATE;
-import static de.ncoder.studipsync.Values.LOG_SEMINARS;
-
 public class JsoupStudipAdapter implements StudipAdapter {
+    private static final Logger log = LoggerFactory.getLogger(JsoupStudipAdapter.class);
+
     private final UIAdapter ui;
     private final Path cookiesPath;
     private final int timeoutMs;
@@ -67,6 +68,7 @@ public class JsoupStudipAdapter implements StudipAdapter {
         this.document = document;
         try {
             URL url = new URL(document.baseUri());
+            log.trace("NAV: " + url);
             for (NavigationListener listener : listeners) {
                 listener.navigated(url);
             }
@@ -125,10 +127,10 @@ public class JsoupStudipAdapter implements StudipAdapter {
         try {
             Path tmp = Files.createTempFile("studip-dump", ".html");
             Files.copy(new ByteArrayInputStream(document.outerHtml().getBytes()), tmp, StandardCopyOption.REPLACE_EXISTING);
-            LOG_NAVIGATE.info("Displaying " + con.url());
+            log.info("Displaying " + con.url());
             ui.displayWebpage(tmp.toUri());
         } catch (IOException e) {
-            LOG_NAVIGATE.warn("Can't write page dump", e);
+            log.warn("Can't write page dump", e);
         }
     }
 
@@ -159,7 +161,6 @@ public class JsoupStudipAdapter implements StudipAdapter {
                 return false;
             }
         } catch (IOException e) {
-            //TODO Should cookie exceptions be suppressed?
             StudipException ex = new StudipException(e);
             ex.put("studip.cookiesPath", cookiesPath);
             ex.put("studip.url", document == null ? "none" : document.baseUri());
@@ -228,7 +229,7 @@ public class JsoupStudipAdapter implements StudipAdapter {
                 throw ex;
             }
             if (currentSeminar != seminar) {
-                LOG_SEMINARS.info("Selected " + seminar);
+                log.debug("Selected " + seminar);
             }
             currentSeminar = seminar;
         } catch (StudipException ex) {
@@ -259,7 +260,7 @@ public class JsoupStudipAdapter implements StudipAdapter {
 
     public void saveCookies() throws IOException {
         if (cookiesPath != null) {
-            LOG_NAVIGATE.info("Save Cookies");
+            log.info("Save Cookies");
             if (Files.exists(cookiesPath)) {
                 Files.delete(cookiesPath);
             }
@@ -272,7 +273,7 @@ public class JsoupStudipAdapter implements StudipAdapter {
     @SuppressWarnings("unchecked")
     public void restoreCookies() throws IOException {
         if (cookiesPath != null) {
-            LOG_NAVIGATE.info("Restore Cookies");
+            log.info("Restore Cookies");
             try (Reader r = Files.newBufferedReader(cookiesPath, Charset.defaultCharset())) {
                 Object o = new JSONParser().parse(r);
                 con.request().cookies().putAll((Map) o);
@@ -292,7 +293,7 @@ public class JsoupStudipAdapter implements StudipAdapter {
         try {
             return cookiesPath != null && Files.isRegularFile(cookiesPath) && Files.size(cookiesPath) > 0;
         } catch (IOException e) {
-            LOG_NAVIGATE.warn("Couldn't read cookies from " + cookiesPath + ", prompting for password", e);
+            log.warn("Couldn't read cookies from " + cookiesPath + ", prompting for password", e);
             return false;
         }
     }
@@ -317,8 +318,8 @@ public class JsoupStudipAdapter implements StudipAdapter {
                 }
             }
         }
-        LOG_SEMINARS.info("Parsed " + seminars.size() + " seminars.");
-        LOG_SEMINARS.debug(seminars.toString());
+        log.debug("Parsed " + seminars.size() + " seminars.");
+        log.trace(seminars.toString());
         return seminars;
     }
 
@@ -359,6 +360,8 @@ public class JsoupStudipAdapter implements StudipAdapter {
                     }
                 }
             }
+            log.debug("Parsed " + downloads.size() + " downloads.");
+            log.trace(downloads.toString());
             return downloads;
         } catch (StudipException ex) {
             ex.put("studip.seminar", currentSeminar);

@@ -3,15 +3,16 @@ package de.ncoder.studipsync;
 import de.ncoder.studipsync.storage.LocalStorage;
 import de.ncoder.studipsync.studip.jsoup.JsoupStudipAdapter;
 import org.apache.commons.cli.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.net.URL;
 
 import static de.ncoder.studipsync.StarterOptions.*;
-import static de.ncoder.studipsync.Values.LOG_MAIN;
-import static de.ncoder.studipsync.Values.LOG_NAVIGATE;
 
 public class Starter {
+    private static final Logger log = LoggerFactory.getLogger(Starter.class);
+
     public static void main(String[] args) throws Exception {
         boolean displayHelp = false;
         CommandLineParser parser = new DefaultParser();
@@ -24,11 +25,9 @@ public class Starter {
 
             Syncer syncer = createSyncer(cmd);
             try {
-                LOG_MAIN.info("Started");
+                log.info("Started");
                 syncer.sync();
-                LOG_MAIN.info("Finished");
-            } catch (Exception e) {
-                LOG_MAIN.error("Uncaught exception", e);
+                log.info("Finished");
             } finally {
                 syncer.close();
                 //FIXME AWT Event Queue blocks termination with modality level 1
@@ -54,19 +53,13 @@ public class Starter {
     }
 
     public static Syncer createSyncer(StarterOptions options) throws IOException {
-        LOG_MAIN.info("Sync to " + options.getCachePath().toAbsolutePath());
+        log.info("Sync to " + options.getCachePath().toAbsolutePath());
 
         LocalStorage storage = LocalStorage.open(options.getCachePath());
         if (options.getPathResolver() != null) {
             storage.setPathResolverDelegate(options.getPathResolver());
         }
         JsoupStudipAdapter browser = new JsoupStudipAdapter(options.getUIAdapter(), options.getCookiesPath(), options.getTimeoutMs());
-        browser.addNavigationListener(new JsoupStudipAdapter.NavigationListener() {
-            @Override
-            public void navigated(URL url) {
-                LOG_NAVIGATE.debug(url.toString());
-            }
-        });
 
         Syncer syncer = new Syncer(
                 browser,

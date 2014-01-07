@@ -2,6 +2,8 @@ package de.ncoder.studipsync.storage;
 
 import de.ncoder.studipsync.data.Download;
 import de.ncoder.studipsync.data.Seminar;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -12,11 +14,11 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.*;
 
-import static de.ncoder.studipsync.Values.LOG_DOWNLOAD;
-import static de.ncoder.studipsync.Values.LOG_MAIN;
 import static de.ncoder.studipsync.studip.StudipAdapter.ZIP_ENCODING;
 
 public class LocalStorage implements Storage {
+    private static final Logger log = LoggerFactory.getLogger(LocalStorage.class);
+
     private PathResolver resolverDelegate = StandardPathResolver.ByHash;
     private final Path root;
     private final List<StorageListener> listeners = new LinkedList<>();
@@ -96,7 +98,7 @@ public class LocalStorage implements Storage {
     @Override
     public void store(Download download, Path dataSrc, boolean isDiff) throws IOException {
         Path dstPath = resolve(download);
-        LOG_DOWNLOAD.info(download + " <<" + (isDiff ? "DIF" : "NEW") + "<< " + dataSrc);
+        log.info(download + " <<" + (isDiff ? "DIF" : "ABS") + "<< " + dataSrc);
         if (!isDiff) {
             delete(download, dstPath);
         }
@@ -109,11 +111,13 @@ public class LocalStorage implements Storage {
 
     private void delete(final Download download, Path path) throws IOException {
         final Path parent = resolve(download);
+        log.debug("DEL: " + path);
         if (Files.isDirectory(path)) {
             Files.walkFileTree(path, new SimpleFileVisitor<Path>() {
                 @Override
                 public FileVisitResult visitFile(Path subpath, BasicFileAttributes attrs) throws IOException {
                     Path relativeSubpath = subpath.relativize(parent);
+                    log.trace("DEL:     " + relativeSubpath);
                     for (StorageListener l : listeners) {
                         l.onDelete(download, relativeSubpath);
                     }
@@ -141,7 +145,7 @@ public class LocalStorage implements Storage {
             Files.createDirectories(dst.getParent());
         }
         if (!checkFilesEqual(src, dst)) {
-            LOG_DOWNLOAD.debug("	" + src + " >> " + dst);
+            log.trace("	" + src + " >> " + dst);
             Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis()));
             for (StorageListener l : listeners) {
                 l.onUpdate(download, dst, src);
@@ -192,7 +196,7 @@ public class LocalStorage implements Storage {
             }
             return true;
         } catch (IOException e) {
-            LOG_DOWNLOAD.warn("Could not compare files " + fileA + " and " + fileB, e);
+            log.warn("Could not compare files " + fileA + " and " + fileB, e);
             return false;
         }
     }
@@ -229,7 +233,7 @@ public class LocalStorage implements Storage {
     // --------------------------------RESET-----------------------------------
 
     public static void reset(Path cachePath, Path cookiesPath) throws IOException {
-        LOG_MAIN.info("Resetting");
+        log.debug("Reset started");
         if (cookiesPath != null && Files.exists(cookiesPath)) {
             Files.delete(cookiesPath);
         }
@@ -250,6 +254,6 @@ public class LocalStorage implements Storage {
         } else if (Files.exists(cachePath)) {
             Files.delete(cachePath);
         }
-        LOG_MAIN.info("Reset completed");
+        log.info("Reset completed");
     }
 }

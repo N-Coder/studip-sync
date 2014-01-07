@@ -6,6 +6,8 @@ import de.ncoder.studipsync.storage.Storage;
 import de.ncoder.studipsync.studip.StudipAdapter;
 import de.ncoder.studipsync.studip.StudipException;
 import org.apache.commons.cli.ParseException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.slf4j.Marker;
 import org.slf4j.MarkerFactory;
 
@@ -22,15 +24,16 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
-import static de.ncoder.studipsync.Values.LOG_SYNCER;
 import static de.ncoder.studipsync.studip.StudipAdapter.PAGE_DOWNLOADS;
 import static de.ncoder.studipsync.studip.StudipAdapter.PAGE_DOWNLOADS_LATEST;
 
 public class Syncer {
+    private static final Logger log = LoggerFactory.getLogger(Syncer.class);
+
     private final StudipAdapter adapter;
     private final Storage storage;
     private final ReentrantLock browserLock = new ReentrantLock();
-    private final ThreadLocal<Marker> marker = new ThreadLocal<>();
+    private Marker marker;
     private CheckLevel checkLevel;
 
     public Syncer(StudipAdapter adapter, Storage storage) {
@@ -50,16 +53,16 @@ public class Syncer {
         } finally {
             browserLock.unlock();
         }
-        LOG_SYNCER.info(seminars.size() + " seminars");
+        log.info(seminars.size() + " seminars");
 
         //Find seminars
         List<StudipException> exceptions = new ArrayList<>();
         for (Seminar seminar : seminars) {
-            marker.set(MarkerFactory.getMarker(seminar.getHash().substring(0, 5)));
+            marker = MarkerFactory.getMarker(seminar.getID());
             try {
                 syncSeminar(seminar, false);
             } catch (StudipException e) {
-                LOG_SYNCER.info(marker.get(), "not synchronized", e);
+                log.error(marker, "Couldn't synchronize", e);
                 exceptions.add(e);
             }
         }
@@ -79,10 +82,10 @@ public class Syncer {
             boolean hasDiff = false;
             browserLock.lock();
             try {
-                LOG_SYNCER.info(marker.get(), seminar + (forceAbsolute ? " absolute" : ""));
+                log.info(marker, seminar.getFullName() + (forceAbsolute ? ", absolute" : ""));
                 adapter.selectSeminar(seminar);
                 List<Download> downloads = adapter.parseDownloads(PAGE_DOWNLOADS, true);
-                LOG_SYNCER.info(marker.get(), "Found " + downloads.size() + " downloadable files");
+                log.info(marker, "  Found " + downloads.size() + " downloadable files");
                 for (final Download download : downloads) {
                     if (download.getLevel() == 0) {
                         try {
@@ -92,17 +95,17 @@ public class Syncer {
                                 //Absolute forced
                                 downloadDiff = false;
                                 src = adapter.startDownload(download, false);
-                                LOG_SYNCER.info(marker.get(), "ABS: " + download.getFileName());
+                                log.info(marker, "  abs: " + download.getFileName());
                             } else if (download.isChanged()) {
                                 //Changed data
                                 downloadDiff = true;
                                 src = adapter.startDownload(download, true);
-                                LOG_SYNCER.info(marker.get(), "DIF: " + download.getFileName());
+                                log.info(marker, "  par: " + download.getFileName());
                             } else {
                                 //Nothing changed
                                 downloadDiff = true;
                                 src = null;
-                                LOG_SYNCER.info(marker.get(), "IGN: " + download.getFileName());
+                                log.info(marker, "  ign: " + download.getFileName());
                             }
                             if (src != null) {
                                 storage.store(download, src, downloadDiff);
@@ -111,7 +114,7 @@ public class Syncer {
                                 hasDiff = true;
                             }
                         } catch (IOException e) {
-                            LOG_SYNCER.warn(marker.get(), "Couldn't download " + download, e);
+                            log.warn(marker, "Couldn't download " + download, e);
                             hasDiff = true;
                         }
                     }
@@ -123,14 +126,14 @@ public class Syncer {
 
             //Check downloads
             if (!isSeminarInSync(seminar)) {
-                LOG_SYNCER.info(marker.get(), "NOT IN-SYNC");
+                log.info(marker, "NOT IN-SYNC");
                 if (isAbsolute) {
                     throw new StudipException("Could not synchronize Seminar " + seminar + ". Local data is different from online data after full download.");
                 } else {
                     syncSeminar(seminar, true);
                 }
             } else {
-                LOG_SYNCER.info(marker.get(), "IN-SYNC");
+                log.info(marker, "FINISHED " + seminar.getName());
             }
         } catch (IOException e) {
             throw new StudipException("Could not synchronize Seminar " + seminar + ".", e);
@@ -158,7 +161,7 @@ public class Syncer {
         final Path storagePath = storage.resolve(seminar);
         if (!Files.exists(storagePath)) {
             //No local files despite available downloads
-            LOG_SYNCER.info(marker.get(), "Seminar is empty!");
+            log.info(marker, "Seminar is empty!");
             return false;
         }
         Files.walkFileTree(storagePath, new SimpleFileVisitor<Path>() {
@@ -172,11 +175,11 @@ public class Syncer {
         //Count local files
         if (localFiles.size() < downloads.size()) {
             // Missing files
-            LOG_SYNCER.warn(marker.get(), "Seminar has only " + localFiles.size() + " local files of " + downloads.size() + " online files.");
+            log.warn(marker, "Seminar has only " + localFiles.size() + " local files of " + downloads.size() + " online files.");
             return false;
         } else {
             // Ignore surplus files
-            LOG_SYNCER.debug(marker.get(), "Seminar has deleted files left! " + localFiles.size() + " local files and " + downloads.size() + " online files.");
+            log.debug(marker, "Seminar has deleted files left! " + localFiles.size() + " local files and " + downloads.size() + " online files.");
         }
 
         //Check local files
@@ -195,12 +198,11 @@ public class Syncer {
             //Find matching candidates
             List<Path> localCandidates = new LinkedList<>();
             for (Path local : localFiles) {
-                // Check name for candidates
-                // TODO check path instead name (names may be equal in different folders)
+                // Check candidate name
                 if (local.getName(local.getNameCount() - 1).toString().equals(download.getFileName())) {
                     if (!localCandidates.isEmpty()) {
                         //Already found a candidate
-                        LOG_SYNCER.debug(marker.get(), "Local files " + localCandidates + " and " + local + " match " + download + "!");
+                        log.debug(marker, "Local files " + localCandidates + " and " + local + " match " + download + "!");
                     }
                     localCandidates.add(local);
 
@@ -211,7 +213,7 @@ public class Syncer {
                     Date localLastMod = new Date(Files.getLastModifiedTime(local).toMillis());
                     if (!localLastMod.after(download.getLastModified())) {
                         //Candidate *potentially* outdated
-                        LOG_SYNCER.warn(marker.get(), "Local file " + local + "(" + localLastMod + ") older than online Version " + download + "(" + download.getLastModified() + ")!");
+                        log.warn(marker, "Local file " + local + "(" + localLastMod + ") older than online Version " + download + "(" + download.getLastModified() + ")!");
                         return false;
                     }
                 }
@@ -220,7 +222,7 @@ public class Syncer {
             //Require at least one candidate
             if (localCandidates.isEmpty()) {
                 //No candidates found
-                LOG_SYNCER.warn(marker.get(), "No local file matching " + download + " (~" + download.getFileName() + ")!");
+                log.warn(marker, "No local file matching " + download + " (~" + download.getFileName() + ")!");
                 return false;
             }
         }

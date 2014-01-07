@@ -3,15 +3,17 @@ package de.ncoder.studipsync.ui;
 import de.ncoder.studipsync.data.LoginData;
 import de.ncoder.studipsync.ui.swing.LoginDialog;
 import org.apache.commons.cli.ParseException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.awt.*;
 import java.io.Console;
 import java.net.URI;
 
-import static de.ncoder.studipsync.Values.LOG_MAIN;
-
 public enum StandardUIAdapter implements UIAdapter {
     SWING() {
+        private final Logger log = LoggerFactory.getLogger(this.toString());
+
         private int loginTries = -1;
 
         @Override
@@ -19,7 +21,7 @@ public enum StandardUIAdapter implements UIAdapter {
             try {
                 javax.swing.UIManager.setLookAndFeel(javax.swing.UIManager.getSystemLookAndFeelClassName());
             } catch (Exception e) {
-                LOG_MAIN.warn("Can't set Look and Feel for Swing UI", e);
+                log.warn("Can't set Look and Feel for Swing UI", e);
             }
         }
 
@@ -35,17 +37,19 @@ public enum StandardUIAdapter implements UIAdapter {
                 try {
                     desktop.browse(uri);
                 } catch (Exception e) {
-                    LOG_MAIN.warn("Can't open browser", e);
+                    log.warn("Can't open browser", e);
                 }
             } else {
-                LOG_MAIN.warn("No Browser available");
+                log.warn("No Browser available");
             }
         }
     },
     CMD() {
+        private final Logger log = LoggerFactory.getLogger(this.toString());
+
         public void init() {
             if (System.console() == null) {
-                LOG_MAIN.warn("Won't be able to access console for reading LoginData", new NullPointerException("System.console()==null"));
+                log.warn("Won't be able to access console for reading LoginData", new NullPointerException("System.console()==null"));
             }
         }
 
@@ -60,7 +64,7 @@ public enum StandardUIAdapter implements UIAdapter {
 
         @Override
         public void displayWebpage(URI uri) {
-            LOG_MAIN.info("Page dump written to\n" + uri);
+            log.info("Page dump written to\n" + uri);
         }
     };
 
