@@ -44,12 +44,13 @@ public class StudipException extends ExecutionException {
 
     @Override
     public String getLocalizedMessage() {
-        StringBuilder bob = new StringBuilder(super.getLocalizedMessage());
+        String message = super.getLocalizedMessage();
+        StringBuilder bob = message != null ? new StringBuilder(message) : new StringBuilder();
         for (Map.Entry additional : additionals.entrySet()) {
-            bob.append("\n");
-            bob.append(additional.getKey().toString());
+            bob.append("\n\t");
+            bob.append(String.valueOf(additional.getKey()));
             bob.append(": ");
-            bob.append(additional.getValue().toString());
+            bob.append(String.valueOf(additional.getValue()));
         }
         return bob.toString();
     }
