@@ -30,7 +30,7 @@ public class Starter {
             try {
                 log.info("Started");
                 syncer.sync();
-                log.info(storeLog.getStatusMessage());
+                log.info(storeLog.getStatusMessage(syncer.getStorage().getRoot()));
                 log.info("Finished");
             } finally {
                 syncer.close();

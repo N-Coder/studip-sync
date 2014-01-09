@@ -32,6 +32,10 @@ public class StorageLog implements Storage.StorageListener {
     }
 
     public String getStatusMessage() {
+        return getStatusMessage(null);
+    }
+
+    public String getStatusMessage(Path relativeTo) {
         List<Map.Entry<StoredFile, StoreAction>> entries = new ArrayList<>(actions.entrySet());
         Collections.sort(entries, new Comparator<Map.Entry<StoredFile, StoreAction>>() {
             @Override
@@ -54,7 +58,11 @@ public class StorageLog implements Storage.StorageListener {
                     break;
             }
             bob.append(": ");
-            bob.append(entry.getKey().getFile().toAbsolutePath());
+            Path path = entry.getKey().getFile().toAbsolutePath();
+            if (relativeTo != null) {
+                path = relativeTo.relativize(path);
+            }
+            bob.append(path);
         }
         return bob.toString();
     }
