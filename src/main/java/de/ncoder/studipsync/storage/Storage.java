@@ -10,9 +10,11 @@ import java.nio.file.Path;
 public interface Storage {
     public Path getRoot();
 
+    public Path resolve(Seminar seminar);
+
     public Path resolve(Download download);
 
-    public Path resolve(Seminar seminar);
+    public Path resolve(Download download, Path srcFile);
 
     public void close() throws IOException;
 

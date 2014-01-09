@@ -3,6 +3,8 @@ package de.ncoder.studipsync.storage;
 import de.ncoder.studipsync.data.Download;
 import de.ncoder.studipsync.data.Seminar;
 import org.apache.commons.cli.ParseException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -42,15 +44,41 @@ public enum StandardPathResolver implements PathResolver {
 
         @Override
         public Path resolve(Path root, Download download) {
-            String path = download.getPath();
-            int slash = path.indexOf('/');
-            slash = slash >= 0 ? slash : path.length() - 1;
-            while (IGNORED_FOLDERS.contains(path.substring(0, slash))) {
-                path = path.substring(slash + 1);
+            return resolve(root, download.getSeminar()).resolve(trim(download.getPath()));
+        }
+
+        @Override
+        public Path resolve(Path root, Download download, Path srcFile) {
+            if (srcFile.isAbsolute()) {
+                srcFile = srcFile.getRoot().relativize(srcFile);
             }
-            return resolve(root, download.getSeminar()).resolve(path);
+            String srcPath = trim(srcFile.toString());
+            Path dstRoot = resolve(root, download);
+            Path dstPath = dstRoot.resolve(srcPath);
+            log.debug(dstPath + " = " + dstRoot + " <~ " + srcPath);
+            return dstPath;
+        }
+
+        private String trim(String path) {
+            int slash = nextSlash(path);
+            while (IGNORED_FOLDERS.contains(path.substring(0, slash))) {
+                path = path.substring(Math.min(slash + 1, path.length()));
+                slash = nextSlash(path);
+            }
+            return path;
+        }
+
+        private int nextSlash(String path) {
+            int slash = path.indexOf('/');
+            if (slash < 0) {
+                return path.length();
+            } else {
+                return slash;
+            }
         }
     };
+
+    private static final Logger log = LoggerFactory.getLogger(StandardPathResolver.class);
 
     public static final List<String> IGNORED_FOLDERS = Arrays.asList(
             "Allgemeiner_Dateiordner", "Hauptordner"
@@ -63,6 +91,17 @@ public enum StandardPathResolver implements PathResolver {
     @Override
     public Path resolve(Path root, Download download) {
         return resolve(root, download.getSeminar()).resolve(download.getPath());
+    }
+
+    @Override
+    public Path resolve(Path root, Download download, Path srcFile) {
+        if (srcFile.isAbsolute()) {
+            srcFile = srcFile.getRoot().relativize(srcFile);
+        }
+        Path dstRoot = resolve(root, download).getParent(); //only dir in root of src == dir of download ("Hauptordner")
+        Path dstPath = dstRoot.resolve(srcFile.toString());
+        log.debug(dstPath + " = " + dstRoot + " <~ " + srcFile);
+        return dstPath;
     }
 
     // --------------------------------

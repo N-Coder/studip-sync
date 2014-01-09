@@ -77,13 +77,18 @@ public class LocalStorage implements Storage {
     }
 
     @Override
+    public Path resolve(Seminar seminar) {
+        return getPathResolverDelegate().resolve(getRoot(), seminar);
+    }
+
+    @Override
     public Path resolve(Download download) {
         return getPathResolverDelegate().resolve(getRoot(), download);
     }
 
     @Override
-    public Path resolve(Seminar seminar) {
-        return getPathResolverDelegate().resolve(getRoot(), seminar);
+    public Path resolve(Download download, Path srcFile) {
+        return getPathResolverDelegate().resolve(getRoot(), download, srcFile);
     }
 
     @Override
@@ -103,7 +108,7 @@ public class LocalStorage implements Storage {
             delete(download, dstPath);
         }
         if (download.isFolder()) {
-            storeZipped(download, dataSrc, dstPath);
+            storeZipped(download, dataSrc);
         } else {
             storeFile(download, dataSrc, dstPath);
         }
@@ -154,23 +159,22 @@ public class LocalStorage implements Storage {
         }
     }
 
-    private void storeZipped(final Download download, Path src, final Path dstRoot) throws IOException {
-        if (Files.size(src) <= 0) {
+    private void storeZipped(final Download download, Path srcZip) throws IOException {
+        if (Files.size(srcZip) <= 0) {
             throw new IOException("Empty file");
         }
-        try (FileSystem srcFS = FileSystems.newFileSystem(new URI("jar", src.toUri().toString(), ""), zipFSOptions(false))) {
+        try (FileSystem srcFS = FileSystems.newFileSystem(new URI("jar", srcZip.toUri().toString(), ""), zipFSOptions(false))) {
             for (final Path srcRoot : srcFS.getRootDirectories()) {
                 Files.walkFileTree(srcRoot, new SimpleFileVisitor<Path>() {
                     @Override
                     public FileVisitResult visitFile(Path srcFile, BasicFileAttributes attr) throws IOException {
-                        Path dstFile = dstRoot.getParent().resolve(srcRoot.relativize(srcFile).toString());
-                        storeFile(download, srcFile, dstFile);
+                        storeFile(download, srcFile, resolve(download, srcFile));
                         return FileVisitResult.CONTINUE;
                     }
                 });
             }
         } catch (URISyntaxException e) {
-            throw new IOException("Can't open zip file " + src, e);
+            throw new IOException("Can't open zip file " + srcZip, e);
         }
     }
 
