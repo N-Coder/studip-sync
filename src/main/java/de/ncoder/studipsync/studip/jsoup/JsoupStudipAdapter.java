@@ -175,17 +175,13 @@ public class JsoupStudipAdapter implements StudipAdapter {
             con.method(Connection.Method.POST);
             con.timeout(timeoutMs);
 
-            con.header("Origin", "https://studip.uni-passau.de");
-            con.header("Host", "studip.uni-passau.de");
-            con.header("Content-Type", "application/x-www-form-urlencoded");
-            con.header("Referer", "https://studip.uni-passau.de/studip/login.php");
+            con.data("security_token", document.getElementsByAttributeValue("name", "security_token").val());
+            con.data("login_ticket", document.getElementsByAttributeValue("name", "login_ticket").val());
 
-            con.data("username", login.getUsername());
-            con.data("challenge", document.getElementById("challenge").val());
-            con.data("login_ticket", document.getElementById("login_ticket").val());
-            con.data("response", document.getElementById("response").val());
-            con.data("resolution", "1366x768");
-            con.data("submitbtn", "");
+            con.data("device_pixel_ratio", "1");
+            con.data("resolution", "1000x1000");
+
+            con.data("loginname", login.getUsername());
             con.data("password", new String(login.getPassword()));
             login.clean();
             try {
@@ -207,8 +203,8 @@ public class JsoupStudipAdapter implements StudipAdapter {
 
     @Override
     public boolean isLoggedIn() {
-        Elements selected = document.select("#toolbar .toolbar_menu li:last-of-type a");
-        return selected.size() == 1 && "Logout".equals(selected.get(0).text().trim());
+        Elements selected = document.select("#footer");
+        return selected.size() == 1 && selected.get(0).text().contains("angemeldet");
     }
 
     public void ensureLoggedIn() throws StudipException {
@@ -247,8 +243,8 @@ public class JsoupStudipAdapter implements StudipAdapter {
 
     @Override
     public boolean isSeminarSelected(Seminar seminar) {
-        Elements selected = document.select("#register");
-        return selected.size() == 1 && seminar.getFullName().equals(selected.get(0).text().trim());
+        Elements selected = document.select("#barBottommiddle");
+        return selected.size() == 1 && selected.get(0).text().contains(seminar.getName());
     }
 
     public void ensureCurrentSeminarSelected() throws StudipException {
@@ -307,7 +303,7 @@ public class JsoupStudipAdapter implements StudipAdapter {
 
         navigate(PAGE_SEMINARS);
 
-        Elements events = document.select("#content>table:first-of-type>tbody>tr");
+        Elements events = document.select("#folder_root_1>table>tbody>tr");
         List<Seminar> seminars = new ArrayList<>();
         for (org.jsoup.nodes.Element event : events) {
             if (event.select(">td").size() > 4) {
@@ -334,7 +330,7 @@ public class JsoupStudipAdapter implements StudipAdapter {
             Map<Integer, Download> stack = new HashMap<>();
             List<Download> downloads = new ArrayList<>();
 
-            Elements rows = document.select("#content>table>tbody>tr:nth-of-type(2)>td:nth-of-type(2)>table>tbody>tr>td>table");
+            Elements rows = document.select("#folder_root_1>table>tbody>tr:nth-of-type(2)>td:nth-of-type(2)>table>tbody>tr>td>table");
             for (org.jsoup.nodes.Element row : rows) {
                 Elements content = row.select(">tbody>tr>td.printhead");
                 Elements insets = row.select(">tbody>tr>td.blank img");

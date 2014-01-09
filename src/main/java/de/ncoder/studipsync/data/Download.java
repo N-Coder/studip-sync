@@ -96,7 +96,7 @@ public class Download implements Serializable {
     public String getHash() {
         String hash = urlParams.get(PARAM_FILE_ID);
         if (hash == null) {
-            hash = urlParams.get(PARAM_FOLDER_ID);
+            //hash = urlParams.get(PARAM_FOLDER_ID);
         }
         if (hash == null) {
             hash = "?" + Objects.hashCode(url);
@@ -105,7 +105,7 @@ public class Download implements Serializable {
     }
 
     public boolean isFolder() {
-        return urlParams.containsKey(PARAM_FOLDER_ID);
+        return Boolean.parseBoolean(urlParams.get("zip")) || urlParams.get("zip").equals("1");
     }
 
     public String getFileName() {

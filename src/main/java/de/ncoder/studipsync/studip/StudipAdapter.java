@@ -10,20 +10,24 @@ import java.util.List;
 import java.util.concurrent.CancellationException;
 
 public interface StudipAdapter {
-    public static final String PAGE_COVER = "http://intelec.uni-passau.de";
-    public static final String PAGE_BASE = "http://studip.uni-passau.de";
-    public static final String PAGE_DOWNLOADS_LATEST = PAGE_BASE + "/studip/plugins.php?cmd=show&id=19&view=onlyFiles&order=chdate";
-    public static final String PAGE_DOWNLOADS = PAGE_BASE + "/studip/plugins.php?cmd=show&id=19&view=seminarFolders&order=name";
+    public static final String PAGE_BASE = "https://studip-dev.uni-passau.de";
+    public static final String PAGE_COVER = PAGE_BASE + "/studip/index.php";
+
+    public static final String PAGE_LOGIN = PAGE_BASE + "/studip/index.php?again=yes";
+    public static final String PAGE_DO_LOGIN = PAGE_LOGIN;
+
+    public static final String PAGE_DOWNLOADS_LATEST = PAGE_BASE + "/studip/folder.php?cmd=all"; //&cid=%s
+    public static final String PAGE_DOWNLOADS = PAGE_BASE + "/studip/folder.php?cmd=tree"; //&cid=%s
+
     public static final String PAGE_SELECT_SEMINAR = PAGE_BASE + "/studip/seminar_main.php?auswahl=%s";
     public static final String PAGE_SEMINARS = PAGE_BASE + "/studip/meine_seminare.php";
-    public static final String PAGE_LOGIN = "http://studip.uni-passau.de/studip/login.php";
-    public static final String PAGE_DO_LOGIN = "https://studip.uni-passau.de/studip/index.php";
 
-    public static final String PARAM_NEWEST_ONLY = "newestOnly";
+    public static final String PARAM_NEWEST_ONLY = "zipnewest";
     public static final String PARAM_FILE_ID = "file_id";
-    public static final String PARAM_FOLDER_ID = "folder_id";
     public static final String PARAM_FILE_NAME = "file_name";
     public static final String PARAM_SEMINAR_SELECTION = "auswahl";
+    //public static final String PARAM_DOWNLOAD = "force_download=1&type=0";
+    //public static final String PARAM_FOLDER = "zip=1";
 
     public static final String[] URI_ILLEGAL_CHARS = new String[]{" ", "ä", "ö", "ü", "Ä", "Ö", "Ü", "ß", ":", "(", ")", "/", "\\"};
     public static final String[] URI_REPLACE_CHARS = new String[]{"_", "ae", "oe", "ue", "Ae", "Oe", "Ue", "ss", "", "", "", "", ""};
