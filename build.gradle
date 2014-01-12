@@ -2,8 +2,8 @@ apply plugin: "java"
 apply plugin: "maven"
 apply plugin: "idea"
 
-group = "de.ncoder.studipsync"
-version = "0.1.0"
+group = "de.ncoder"
+version = "1.0.0"
 
 repositories {
     mavenCentral()
@@ -16,11 +16,83 @@ dependencies {
     compile "org.slf4j:slf4j-api:1.7.5"
     compile "org.jsoup:jsoup:1.7.3"
     compile "commons-cli:commons-cli:1.3-SNAPSHOT"
-    compile "com.googlecode.json-simple:json-simple:1.1.1"
+    compile("com.googlecode.json-simple:json-simple:1.1.1") {
+        exclude group: "junit"
+        exclude group: "org.hamcrest"
+    }
 
-    compile "ch.qos.logback:logback-classic:1.0.13"
+    runtime "ch.qos.logback:logback-classic:1.0.13"
 }
 
-sourceSets {
-    main.java { exclude "**/archive/**" }
+jar {
+    manifest {
+        from("src/main/resources/META-INF/MANIFEST.MF")
+        attributes(
+                'Implementation-Title': "StudIP-Sync",
+                'Implementation-Version': version,
+                'Build-By': System.getProperty('user.name'),
+                'Build-Date': new Date(),
+                'Build-JDK': System.getProperty('java.version')
+        )
+    }
+}
+
+uploadArchives {
+    repositories {
+        mavenDeployer {
+            mavenLocal()
+        }
+    }
+}
+
+/**
+ * Use IntelliJ's javac2 compiler to compile *.form Swing GUIs
+ */
+if (project.ext.has("compileSwing")) {
+    configurations {
+        javac2
+    }
+
+    dependencies {
+        def ideaVersion = "13.0.1"
+
+        javac2 "com.intellij:forms_rt:${ideaVersion}"
+        javac2 "com.intellij:javac2:${ideaVersion}"
+        javac2 "com.intellij:asm4-all:${ideaVersion}-idea"
+        javac2 "org.jdom:jdom:1.1"
+
+        runtime "com.intellij:forms_rt:${ideaVersion}"
+    }
+
+    compileJava {
+        doLast {
+            project.sourceSets.main.output.classesDir.mkdirs()
+            ant.taskdef name: 'javac2', classname: 'com.intellij.ant.Javac2', classpath: configurations.javac2.asPath
+            ant.javac2 srcdir: project.sourceSets.main.java.srcDirs.join(':'),
+                    classpath: [project.sourceSets.main.compileClasspath.asPath, configurations.javac2.asPath],
+                    destdir: project.sourceSets.main.output.classesDir,
+                    source: sourceCompatibility,
+                    target: targetCompatibility,
+                    includeAntRuntime: false
+        }
+    }
+}
+
+/**
+ * Extract all dependencies into the jar
+ */
+if (project.ext.has("fatJar")) {
+    jar {
+        from {
+            configurations.runtime.collect {
+                if (it.isDirectory()) {
+                    it
+                } else {
+                    zipTree(it).matching {
+                        exclude "META-INF/**"
+                    }
+                }
+            }
+        }
+    }
 }
