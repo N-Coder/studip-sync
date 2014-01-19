@@ -46,6 +46,8 @@ public interface Storage {
 
     public void store(Download download, Path dataSrc, boolean isDiff) throws IOException;
 
+    public void delete(Download download) throws IOException;
+
     public boolean hasListener(StorageListener o);
 
     public boolean registerListener(StorageListener e);
@@ -53,8 +55,18 @@ public interface Storage {
     public boolean unregisterListener(StorageListener o);
 
     public static interface StorageListener {
-        public void onDelete(Download download, Path child);
+        public void onDelete(Download download, Path child) throws OperationVeto;
 
-        public void onUpdate(Download download, Path child, Path replacement);
+        public void onUpdate(Download download, Path child, Path replacement) throws OperationVeto;
     }
+
+    public static class OperationVeto extends Exception {
+        public OperationVeto() {
+        }
+
+        public OperationVeto(String message) {
+            super(message);
+        }
+    }
+
 }

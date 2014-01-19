@@ -49,8 +49,8 @@ public interface StudipAdapter {
     public static final String PARAM_FILE_NAME = "file_name";
     public static final String PARAM_SEMINAR_SELECTION = "auswahl";
 
-    public static final String[] URI_ILLEGAL_CHARS = new String[]{" ", "ä", "ö", "ü", "Ä", "Ö", "Ü", "ß", ":", "(", ")", "/", "\\"};
-    public static final String[] URI_REPLACE_CHARS = new String[]{"_", "ae", "oe", "ue", "Ae", "Oe", "Ue", "ss", "", "", "", "", ""};
+    public static final String[] URI_ILLEGAL_CHARS = new String[]{" ", "ä", "ö", "ü", "Ä", "Ö", "Ü", "ß", ":", "(", ")", "[", "]", "/", "\\"};
+    public static final String[] URI_REPLACE_CHARS = new String[]{"_", "ae", "oe", "ue", "Ae", "Oe", "Ue", "ss", "", "", "", "", "", "", ""};
     public static final String URI_ENCODING = "ISO-8859-1";
     public static final String ZIP_ENCODING = "Cp1252";
 

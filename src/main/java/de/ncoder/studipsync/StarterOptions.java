@@ -51,6 +51,7 @@ public class StarterOptions {
     public static final String OPTION_UI = "ui";
     public static final String OPTION_OUT = "o";
     public static final String OPTION_RESET = "r";
+    public static final String OPTION_PERSISTENT = "p";
     public static final String OPTION_CHECK_LEVEL = "c";
     public static final String OPTION_COOKIES = "l";
     public static final String OPTION_NO_COOKIES = "k";
@@ -101,6 +102,10 @@ public class StarterOptions {
                 .desc("Delete all local data and resynchronize everything.")
                 .longOpt("reset")
                 .build());
+        OPTIONS.addOption(Option.builder(OPTION_PERSISTENT)
+                .desc("Do not delete any files that have been deleted in StudIP.")
+                .longOpt("persist")
+                .build());
         OPTIONS.addOption(Option.builder(OPTION_CHECK_LEVEL)
                 .hasArg()
                 .argName("level")
@@ -138,6 +143,7 @@ public class StarterOptions {
     private Syncer.CheckLevel checkLevel;
     private UIAdapter uiAdapter;
     private PathResolver pathResolver;
+    private boolean persitent;
 
     public StarterOptions() {
         this(
@@ -146,17 +152,19 @@ public class StarterOptions {
                 DEFAULT_TIMEOUT,
                 Syncer.CheckLevel.Default,
                 StandardUIAdapter.getDefaultUIAdapter(),
-                StandardPathResolver.getDefaultPathResolver()
+                StandardPathResolver.getDefaultPathResolver(),
+                false
         );
     }
 
-    public StarterOptions(Path cachePath, Path cookiesPath, int timeoutMs, Syncer.CheckLevel checkLevel, UIAdapter uiAdapter, PathResolver pathResolver) {
+    public StarterOptions(Path cachePath, Path cookiesPath, int timeoutMs, Syncer.CheckLevel checkLevel, UIAdapter uiAdapter, PathResolver pathResolver, boolean persitent) {
         this.cachePath = cachePath;
         this.cookiesPath = cookiesPath;
         this.timeoutMs = timeoutMs;
         this.checkLevel = checkLevel;
         this.uiAdapter = uiAdapter;
         this.pathResolver = pathResolver;
+        this.persitent = persitent;
     }
 
     public void set(CommandLine cmd) throws ParseException {
@@ -185,6 +193,7 @@ public class StarterOptions {
         if (cmd.hasOption(OPTION_PATH_RESOLVER)) {
             setPathResolver(StandardPathResolver.getPathResolver(cmd.getOptionValue(OPTION_PATH_RESOLVER)));
         }
+        setPersitent(cmd.hasOption(OPTION_PERSISTENT));
     }
 
     public Path getCachePath() {
@@ -235,6 +244,14 @@ public class StarterOptions {
         this.pathResolver = pathResolver;
     }
 
+    public boolean isPersitent() {
+        return persitent;
+    }
+
+    public void setPersitent(boolean persitent) {
+        this.persitent = persitent;
+    }
+
     @Override
     public String toString() {
         return "Options{\n" +
@@ -244,6 +261,7 @@ public class StarterOptions {
                 "\tcheckLevel=" + checkLevel + ",\n" +
                 "\tuiAdapter=" + uiAdapter + ",\n" +
                 "\tpathResolver=" + pathResolver + ",\n" +
+                "\tpersitent=" + persitent + ",\n" +
                 '}';
     }
 }

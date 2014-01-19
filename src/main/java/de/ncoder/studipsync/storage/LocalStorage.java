@@ -118,7 +118,10 @@ public class LocalStorage implements Storage {
     @Override
     public void store(Download download, InputStream dataSrc, boolean isDiff) throws IOException {
         //TODO downloading should be handled externally
-        Path tmp = Files.createTempFile(download.getSeminar().getID() + "-", download.getFileName());
+        Path tmp = Files.createTempFile(
+                download.getSeminar().getID().replace("[^A-Za-z0-9]+", "") + "-",
+                "-" + download.getFileName().replace("[^A-Za-z0-9]+", "")
+        );
         Files.copy(dataSrc, tmp, StandardCopyOption.REPLACE_EXISTING);
         store(download, tmp, isDiff);
         Files.delete(tmp);
@@ -127,7 +130,7 @@ public class LocalStorage implements Storage {
     @Override
     public void store(Download download, Path dataSrc, boolean isDiff) throws IOException {
         Path dstPath = resolve(download);
-        log.debug(download + " <<" + (isDiff ? "DIF" : "ABS") + "<< " + dataSrc);
+        log.debug("NEW:\t" + download + " <<" + (isDiff ? "DIF" : "ABS") + "<< " + dataSrc);
         if (!isDiff) {
             delete(download, dstPath);
         }
@@ -138,48 +141,22 @@ public class LocalStorage implements Storage {
         }
     }
 
-    private void delete(final Download download, Path path) throws IOException {
-        final Path parent = resolve(download);
-        log.debug("DEL: " + path);
-        if (Files.isDirectory(path)) {
-            Files.walkFileTree(path, new SimpleFileVisitor<Path>() {
-                @Override
-                public FileVisitResult visitFile(Path subpath, BasicFileAttributes attrs) throws IOException {
-                    Path relativeSubpath = subpath.relativize(parent);
-                    log.trace("DEL:     " + relativeSubpath);
-                    for (StorageListener l : listeners) {
-                        l.onDelete(download, relativeSubpath);
-                    }
-                    Files.delete(subpath);
-                    return FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-                    Files.delete(dir);
-                    return FileVisitResult.CONTINUE;
-                }
-            });
-        } else if (Files.exists(path)) {
-            Path relativePath = path.relativize(parent);
-            for (StorageListener l : listeners) {
-                l.onDelete(download, relativePath);
-            }
-            Files.delete(path);
-        }
-    }
 
     private void storeFile(final Download download, Path src, Path dst) throws IOException {
         if (dst.getParent() != null) {
             Files.createDirectories(dst.getParent());
         }
         if (!checkFilesEqual(src, dst)) {
-            log.trace("	" + src + " >> " + dst);
+            log.trace("\t\t" + src + " >> " + dst);
             Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis()));
-            for (StorageListener l : listeners) {
-                l.onUpdate(download, dst, src);
+            try {
+                for (StorageListener l : listeners) {
+                    l.onUpdate(download, dst, src);
+                }
+                Files.move(src, dst, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
+            } catch (OperationVeto e) {
+                log.trace("\t\t" + e);
             }
-            Files.move(src, dst, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
         }
     }
 
@@ -199,6 +176,57 @@ public class LocalStorage implements Storage {
             }
         } catch (URISyntaxException e) {
             throw new IOException("Can't open zip file " + srcZip, e);
+        }
+    }
+
+    @Override
+    public void delete(Download download) throws IOException {
+        delete(download, resolve(download));
+    }
+
+    private void delete(final Download download, Path path) throws IOException {
+        final Path parent = resolve(download);
+        log.debug("DEL:\t" + path);
+        if (Files.isDirectory(path)) {
+            Files.walkFileTree(path, new SimpleFileVisitor<Path>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                    if (dir.getFileName().toString().startsWith(".")) {
+                        return FileVisitResult.SKIP_SUBTREE;
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFile(Path subpath, BasicFileAttributes attrs) throws IOException {
+                    deleteFile(download, subpath.relativize(parent));
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                    try {
+                        Files.delete(dir);
+                    } catch (DirectoryNotEmptyException e) {
+                        log.trace("\tDirectory " + dir + " not emptied: " + e.toString());
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } else if (Files.exists(path)) {
+            deleteFile(download, path.relativize(parent));
+        }
+    }
+
+    private void deleteFile(Download download, Path relativePath) throws IOException {
+        log.trace("DEL:\t\t" + relativePath);
+        try {
+            for (StorageListener l : listeners) {
+                l.onDelete(download, relativePath);
+            }
+            Files.delete(relativePath);
+        } catch (OperationVeto e) {
+            log.trace("\t\t" + e);
         }
     }
 
@@ -268,6 +296,14 @@ public class LocalStorage implements Storage {
         if (Files.isDirectory(cachePath)) {
             Files.walkFileTree(cachePath, new SimpleFileVisitor<Path>() {
                 @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                    if (dir.getFileName().toString().startsWith(".")) {
+                        return FileVisitResult.SKIP_SUBTREE;
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
                 public FileVisitResult visitFile(Path subpath, BasicFileAttributes attrs) throws IOException {
                     Files.delete(subpath);
                     return FileVisitResult.CONTINUE;
@@ -275,7 +311,11 @@ public class LocalStorage implements Storage {
 
                 @Override
                 public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-                    Files.delete(dir);
+                    try {
+                        Files.delete(dir);
+                    } catch (DirectoryNotEmptyException e) {
+                        log.trace("\tDirectory " + dir + " not emptied: " + e.toString());
+                    }
                     return FileVisitResult.CONTINUE;
                 }
             });
