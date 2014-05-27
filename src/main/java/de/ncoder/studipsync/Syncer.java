@@ -1,7 +1,7 @@
 package de.ncoder.studipsync;
 
-import de.ncoder.studipsync.data.Download;
 import de.ncoder.studipsync.data.Seminar;
+import de.ncoder.studipsync.data.StudipFile;
 import de.ncoder.studipsync.storage.Storage;
 import de.ncoder.studipsync.studip.StudipAdapter;
 import de.ncoder.studipsync.studip.StudipException;
@@ -18,325 +18,246 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.concurrent.locks.ReentrantLock;
-
-import static de.ncoder.studipsync.studip.StudipAdapter.PAGE_DOWNLOADS;
-import static de.ncoder.studipsync.studip.StudipAdapter.PAGE_DOWNLOADS_LATEST;
+import java.util.*;
 
 public class Syncer {
-    private static final Logger log = LoggerFactory.getLogger(Syncer.class);
+	private static final Logger log = LoggerFactory.getLogger(Syncer.class);
 
-    private final StudipAdapter adapter;
-    private final Storage storage;
-    private final ReentrantLock browserLock = new ReentrantLock();
-    private Marker marker;
-    private CheckLevel checkLevel;
+	private final StudipAdapter adapter;
+	private final Storage storage;
+	private Marker marker;
+	private CheckLevel checkLevel;
 
-    public Syncer(StudipAdapter adapter, Storage storage) {
-        this.adapter = adapter;
-        this.storage = storage;
-    }
+	public Syncer(StudipAdapter adapter, Storage storage) {
+		this.adapter = adapter;
+		this.storage = storage;
+	}
 
-    public void init() throws StudipException {
-        browserLock.lock();
-        try {
-            adapter.init();
-            adapter.doLogin();
-        } finally {
-            browserLock.unlock();
-        }
-    }
+	public void init() throws StudipException {
+		adapter.init();
+		adapter.doLogin();
+	}
 
-    public void close() throws IOException {
-        browserLock.lock();
-        try {
-            adapter.close();
-        } finally {
-            browserLock.unlock();
-        }
-        storage.close();
-    }
+	public void close() throws IOException {
+		adapter.close();
+		storage.close();
+	}
 
-    public synchronized void sync() throws StudipException, InterruptedException {
-        final List<Seminar> seminars;
+	public synchronized void sync() throws StudipException, IOException {
+		final List<Seminar> seminars;
 
-        //Access seminars
-        browserLock.lock();
-        try {
-            init();
-            seminars = getSeminars();
-        } finally {
-            browserLock.unlock();
-        }
-        log.info(seminars.size() + " seminars");
+		//Load seminars
+		init();
+		seminars = adapter.getSeminars();
+		log.info(seminars.size() + " seminar" + (seminars.size() != 1 ? "s" : ""));
 
-        //Sync seminars
-        sync(seminars);
-    }
+		//Sync seminars
+		sync(seminars);
+	}
 
-    public synchronized void sync(List<Seminar> seminars) throws StudipException, InterruptedException {
-        List<StudipException> exceptions = new ArrayList<>();
-        for (Seminar seminar : seminars) {
-            marker = MarkerFactory.getMarker(seminar.getID());
-            try {
-                syncSeminar(seminar, false);
-            } catch (StudipException e) {
-                log.error(marker, "Couldn't synchronize", e);
-                exceptions.add(e);
-            }
-        }
+	public synchronized void sync(List<Seminar> seminars) throws StudipException, IOException {
+		List<StudipException> exceptions = new ArrayList<>();
+		for (ListIterator<Seminar> iterator = seminars.listIterator(); iterator.hasNext(); ) {
+			Seminar seminar = iterator.next();
+			marker = MarkerFactory.getMarker(seminar.getID());
+			log.info(marker, (iterator.previousIndex() + 1) + "/" + seminars.size() + " " + seminar.getName());
+			try {
+				syncSeminar(seminar);
+			} catch (StudipException e) {
+				log.error(marker, "\t", e);
+				exceptions.add(e);
+			}
+		}
 
-        if (!exceptions.isEmpty()) {
-            StudipException ex = new StudipException("Not all seminars are in sync");
-            for (StudipException suppressed : exceptions) {
-                ex.addSuppressed(suppressed);
-            }
-            throw ex;
-        }
-    }
+		if (!exceptions.isEmpty()) {
+			StudipException ex = new StudipException("Not all seminars are in sync");
+			for (StudipException suppressed : exceptions) {
+				ex.addSuppressed(suppressed);
+			}
+			throw ex;
+		}
+	}
 
-    public void syncSeminar(final Seminar seminar, boolean forceAbsolute) throws StudipException {
-        try {
-            //Find downloads
-            log.info(marker, seminar.getFullName() + (forceAbsolute ? ", absolute" : ""));
-            List<Download> downloads = getDownloads(seminar);
-            log.info(marker, "\tFound " + downloads.size() + " downloadable file" + (downloads.size() != 1 ? "s" : ""));
-            boolean wasAbsolute = syncDownloads(downloads, forceAbsolute);
+	public void syncSeminar(final Seminar seminar) throws StudipException, IOException {
+		try {
+			//Check for changes
+			if (seminar.hasChangedFiles()) {
+				log.info(marker, "\tDownloading changes");
+				long changesAfter = 0; //TODO
+				storage.store(adapter, seminar, changesAfter);
+			}
+			//Check if seminar is in sync
+			log.info("\tChecking if seminar is in sync...");
+			if (!isSeminarInSync(seminar)) {
+				log.info(marker, "\tSeminar is not in sync " + (seminar.hasChangedFiles() ?
+						"after downloading only changes" : "but StudIP didn't report any changes"));
+				//Download all files
+				log.info(marker, "\tDownloading complete .zip file");
+				storage.store(adapter, seminar);
 
-            //Check downloads
-            checkSeminar(seminar, wasAbsolute || forceAbsolute);
-        } catch (IOException e) {
-            throw new StudipException("Could not synchronize Seminar " + seminar + ".", e);
-        } catch (StudipException ex) {
-            ex.put("download.seminar", seminar);
-            ex.put("download.forceAbsolute", forceAbsolute);
-            throw ex;
-        }
-    }
+				if (!isSeminarInSync(seminar)) {
+					throw new StudipException("IllegalState: Seminar not synchronized after downloading every file!");
+				}
+			}
+		} catch (StudipException ex) {
+			ex.put("download.seminar", seminar);
+			throw ex;
+		}
+	}
 
-    /**
-     * @return wasAbsolute, true if at every download was absolutely synchronized
-     */
-    public boolean syncDownloads(List<Download> downloads, boolean forceAbsolute) throws StudipException {
-        boolean wasAbsolute = true;
-        for (final Download download : downloads) {
-            if (download.getLevel() == 0) {
-                try {
-                    final boolean downloadDiff;
-                    final InputStream src;
-                    if (forceAbsolute) {
-                        //Absolute forced
-                        downloadDiff = false;
-                        src = startDownload(download, false);
-                        log.info(marker, "\tabs: " + download.getFileName());
-                    } else if (download.isChanged()) {
-                        //Changed data
-                        downloadDiff = true;
-                        src = startDownload(download, true);
-                        log.info(marker, "\tpar: " + download.getFileName());
-                    } else {
-                        //Nothing changed
-                        downloadDiff = true;
-                        src = null;
-                        log.info(marker, "\tign: " + download.getFileName());
-                    }
-                    if (src != null) {
-                        storage.store(download, src, downloadDiff);
-                    }
-                    if (downloadDiff) {
-                        wasAbsolute = false;
-                    }
-                } catch (IOException e) {
-                    log.warn(marker, "Couldn't download " + download, e);
-                    wasAbsolute = false;
-                }
-            }
-        }
-        return wasAbsolute;
-    }
+	public boolean isSeminarInSync(Seminar seminar) throws IOException, StudipException {
+		if (!checkLevel.includes(CheckLevel.Count)) {
+			return true;
+		}
 
-    public void checkSeminar(Seminar seminar, boolean syncWasAbsolute) throws IOException, StudipException {
-        if (!isSeminarInSync(seminar)) {
-            log.info(marker, "NOT IN-SYNC");
-            if (syncWasAbsolute) {
-                throw new StudipException("Could not synchronize Seminar " + seminar + ". Local data is different from online data after full download.");
-            } else {
-                syncSeminar(seminar, true);
-            }
-        } else {
-            log.info(marker, "FINISHED " + seminar.getName());
-        }
-    }
+		//List downloads
+		final List<StudipFile> studipFiles = new ArrayList<>(seminar.getFiles());
+		if (studipFiles.isEmpty()) {
+			//No downloads - nothing to do
+			return true;
+		}
 
-    public boolean isSeminarInSync(Seminar seminar) throws IOException, StudipException {
-        if (!checkLevel.includes(CheckLevel.Count)) {
-            return true;
-        }
+		//List local files
+		final List<Path> localFiles = new LinkedList<>();
+		final Path storagePath = storage.resolve(seminar);
+		if (!Files.exists(storagePath)) {
+			//No local files despite available downloads
+			log.info(marker, "\tSeminar is empty!");
+			return false;
+		}
+		Files.walkFileTree(storagePath, new SimpleFileVisitor<Path>() {
+			@Override
+			public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+				localFiles.add(file);
+				return FileVisitResult.CONTINUE;
+			}
+		});
 
-        //List downloads
-        final List<Download> downloads;
-        browserLock.lock();
-        try {
-            downloads = adapter.parseDownloads(PAGE_DOWNLOADS_LATEST, false);
-        } finally {
-            browserLock.unlock();
-        }
-        if (downloads.isEmpty()) {
-            //No downloads - nothing to do
-            return true;
-        }
+		//Count local files
+		if (localFiles.size() < studipFiles.size()) {
+			// Missing files
+			log.warn(marker, "\tSeminar has only " + localFiles.size() + " local file(s) of " + studipFiles.size() + " online file(s).");
+			return false;
+		} else if (localFiles.size() > studipFiles.size()) {
+			// Ignore surplus files
+			log.debug(marker, "\tSeminar has deleted file(s) left! " + localFiles.size() + " local file(s) and " + studipFiles.size() + " online file(s).");
+		}
 
-        //List local files
-        final List<Path> localFiles = new LinkedList<>();
-        final Path storagePath = storage.resolve(seminar);
-        if (!Files.exists(storagePath)) {
-            //No local files despite available downloads
-            log.info(marker, "Seminar is empty!");
-            return false;
-        }
-        Files.walkFileTree(storagePath, new SimpleFileVisitor<Path>() {
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                localFiles.add(file);
-                return FileVisitResult.CONTINUE;
-            }
-        });
+		//Check local files
+		return areFilesInSync(studipFiles, localFiles);
+	}
 
-        //Count local files
-        if (localFiles.size() < downloads.size()) {
-            // Missing files
-            log.warn(marker, "Seminar has only " + localFiles.size() + " local file(s) of " + downloads.size() + " online file(s).");
-            return false;
-        } else {
-            // Ignore surplus files
-            log.debug(marker, "Seminar has deleted file(s) left! " + localFiles.size() + " local file(s) and " + downloads.size() + " online file(s).");
-        }
+	public boolean areFilesInSync(List<StudipFile> studipFiles, List<Path> localFiles) throws IOException, StudipException {
+		if (!checkLevel.includes(CheckLevel.Files)) {
+			return true;
+		}
+		for (StudipFile studipFile : studipFiles) {
+			//Find matching candidates
+			List<Path> localCandidates = new LinkedList<>();
+			for (Path local : localFiles) {
+				// Check candidate name
+				if (local.getName(local.getNameCount() - 1).toString().equals(studipFile.getFileName())) {
+					if (!localCandidates.isEmpty()) {
+						//Already found a candidate
+						//TODO check candidate count matches nr of downloads with same name
+						log.debug(marker, "\tLocal files " + localCandidates + " and " + local + " match " + studipFile + "!");
+					}
+					localCandidates.add(local);
 
-        //Check local files
-        if (!areFilesInSync(downloads, localFiles)) {
-            return false;
-        }
+					//Check LastModifiedTime
+					if (!checkLevel.includes(CheckLevel.ModTime)) {
+						continue;
+					}
+					Date localLastMod = new Date(Files.getLastModifiedTime(local).toMillis());
+					if (!localLastMod.after(studipFile.getLastModified())) {
+						//Candidate *potentially* outdated
+						log.warn(marker, "\tLocal file " + local + "(" + localLastMod + ") older than online Version " + studipFile + "(" + studipFile.getLastModified() + ")!");
+						return false;
+					}
+				}
+			}
 
-        return true;
-    }
+			//Require at least one candidate
+			if (localCandidates.isEmpty()) {
+				//No candidates found
+				log.warn(marker, "\tNo local file matching " + studipFile + " (~" + studipFile.getFileName() + ")!");
+				return false;
+			}
+		}
+		return true;
+	}
 
-    public boolean areFilesInSync(List<Download> downloads, List<Path> localFiles) throws IOException {
-        if (!checkLevel.includes(CheckLevel.Files)) {
-            return true;
-        }
-        for (Download download : downloads) {
-            //Find matching candidates
-            List<Path> localCandidates = new LinkedList<>();
-            for (Path local : localFiles) {
-                // Check candidate name
-                if (local.getName(local.getNameCount() - 1).toString().equals(download.getFileName())) {
-                    if (!localCandidates.isEmpty()) {
-                        //Already found a candidate
-                        log.debug(marker, "Local files " + localCandidates + " and " + local + " match " + download + "!");
-                    }
-                    localCandidates.add(local);
+	public static boolean checkFilesEqual(Path fileA, Path fileB) {
+		try {
+			if (!Files.exists(fileA) || !Files.exists(fileB)) {
+				return Files.exists(fileA) == Files.exists(fileB);
+			}
+			if (Files.size(fileA) != Files.size(fileB)) {
+				return false;
+			}
+			byte[] srcBuf = new byte[1024];
+			byte[] dstBuf = new byte[1024];
+			try (InputStream srcIn = Files.newInputStream(fileA); InputStream dstIn = Files.newInputStream(fileB)) {
+				if (srcIn.read(srcBuf) != dstIn.read(dstBuf)) {
+					return false;
+				}
+				if (!Arrays.equals(srcBuf, dstBuf)) {
+					return false;
+				}
+			}
+			return true;
+		} catch (IOException e) {
+			log.warn("Could not compare files " + fileA + " and " + fileB, e);
+			return false;
+		}
+	}
 
-                    //Check LastModifiedTime
-                    if (!checkLevel.includes(CheckLevel.ModTime)) {
-                        continue;
-                    }
-                    Date localLastMod = new Date(Files.getLastModifiedTime(local).toMillis());
-                    if (!localLastMod.after(download.getLastModified())) {
-                        //Candidate *potentially* outdated
-                        log.warn(marker, "Local file " + local + "(" + localLastMod + ") older than online Version " + download + "(" + download.getLastModified() + ")!");
-                        return false;
-                    }
-                }
-            }
+	public CheckLevel getCheckLevel() {
+		return checkLevel;
+	}
 
-            //Require at least one candidate
-            if (localCandidates.isEmpty()) {
-                //No candidates found
-                log.warn(marker, "No local file matching " + download + " (~" + download.getFileName() + ")!");
-                return false;
-            }
-        }
-        return true;
-    }
+	public void setCheckLevel(CheckLevel checkLevel) {
+		this.checkLevel = checkLevel;
+	}
 
-    public List<Seminar> getSeminars() throws StudipException {
-        browserLock.lock();
-        try {
-            return adapter.parseSeminars();
-        } finally {
-            browserLock.unlock();
-        }
-    }
+	public static enum CheckLevel implements Comparable<CheckLevel> {
+		None,
+		Count,
+		Files,
+		ModTime,
+		All;
 
-    public List<Download> getDownloads(Seminar seminar) throws StudipException {
-        browserLock.lock();
-        try {
-            adapter.selectSeminar(seminar);
-            return adapter.parseDownloads(PAGE_DOWNLOADS, true);
-        } finally {
-            browserLock.unlock();
-        }
-    }
+		public static CheckLevel Default = All;
 
-    public InputStream startDownload(Download download, boolean diffOnly) throws StudipException, IOException {
-        browserLock.lock();
-        try {
-            return adapter.startDownload(download, diffOnly);
-        } finally {
-            browserLock.unlock();
-        }
-    }
+		public static CheckLevel get(String level) throws ParseException {
+			if (level != null) {
+				try {
+					return valueOf(level);
+				} catch (IllegalArgumentException earg) {
+					try {
+						return CheckLevel.values()[Integer.parseInt(level)];
+					} catch (NumberFormatException enumb) {
+						ParseException pe = new ParseException(level + " is not a CheckLevel.");
+						pe.initCause(earg);
+						pe.addSuppressed(enumb);
+						throw pe;
+					}
+				}
+			} else {
+				return Default;
+			}
+		}
 
-    public CheckLevel getCheckLevel() {
-        return checkLevel;
-    }
+		public boolean includes(CheckLevel other) {
+			return compareTo(other) >= 0;
+		}
+	}
 
-    public void setCheckLevel(CheckLevel checkLevel) {
-        this.checkLevel = checkLevel;
-    }
+	public StudipAdapter getAdapter() {
+		return adapter;
+	}
 
-    public static enum CheckLevel implements Comparable<CheckLevel> {
-        None,
-        Count,
-        Files,
-        ModTime,
-        All;
-
-        public static CheckLevel Default = All;
-
-        public static CheckLevel get(String level) throws ParseException {
-            if (level != null) {
-                try {
-                    return valueOf(level);
-                } catch (IllegalArgumentException earg) {
-                    try {
-                        return CheckLevel.values()[Integer.parseInt(level)];
-                    } catch (NumberFormatException enumb) {
-                        ParseException pe = new ParseException(level + " is not a CheckLevel.");
-                        pe.initCause(earg);
-                        pe.addSuppressed(enumb);
-                        throw pe;
-                    }
-                }
-            } else {
-                return Default;
-            }
-        }
-
-        public boolean includes(CheckLevel other) {
-            return compareTo(other) >= 0;
-        }
-    }
-
-    public StudipAdapter getAdapter() {
-        return adapter;
-    }
-
-    public Storage getStorage() {
-        return storage;
-    }
+	public Storage getStorage() {
+		return storage;
+	}
 }

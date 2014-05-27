@@ -1,36 +1,36 @@
 package de.ncoder.studipsync.storage;
 
-import de.ncoder.studipsync.data.Download;
 import de.ncoder.studipsync.data.Seminar;
+import de.ncoder.studipsync.data.StudipFile;
+import de.ncoder.studipsync.studip.StudipAdapter;
+import de.ncoder.studipsync.studip.StudipException;
 
+import java.io.Closeable;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Path;
 
-public interface Storage {
-    public Path getRoot();
+public interface Storage extends Closeable {
+	public java.nio.file.Path getRoot();
 
-    public Path resolve(Seminar seminar);
+	public java.nio.file.Path resolve(Seminar seminar);
 
-    public Path resolve(Download download);
+	public java.nio.file.Path resolve(StudipFile studipFile);
 
-    public Path resolve(Download download, Path srcFile);
+	public void store(StudipAdapter adapter, Seminar seminar) throws IOException, StudipException;
 
-    public void close() throws IOException;
+	public void store(StudipAdapter adapter, Seminar seminar, long changesAfter) throws IOException, StudipException;
 
-    public void store(Download download, InputStream dataSrc, boolean isDiff) throws IOException;
+	public void store(StudipAdapter adapter, StudipFile file) throws IOException, StudipException;
 
-    public void store(Download download, Path dataSrc, boolean isDiff) throws IOException;
+	public void store(StudipAdapter adapter, StudipFile file, long changesAfter) throws IOException, StudipException;
 
-    public boolean hasListener(StorageListener o);
+	public boolean registerListener(StorageListener e);
 
-    public boolean registerListener(StorageListener e);
+	public boolean unregisterListener(StorageListener o);
 
-    public boolean unregisterListener(StorageListener o);
+	public static interface StorageListener {
+		public void onDelete(StudipFile studipFile, Path localFile);
 
-    public static interface StorageListener {
-        public void onDelete(Download download, Path child);
-
-        public void onUpdate(Download download, Path child, Path replacement);
-    }
+		public void onUpdate(StudipFile studipFile, Path localFile, Path replacement);
+	}
 }

@@ -1,18 +1,34 @@
 <configuration>
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>INFO</level>
+        </filter>
+
         <encoder>
             <pattern>%d{HH:mm:ss}\t%msg%n</pattern>
         </encoder>
     </appender>
 
-    <root level="WARN">
+    <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+        <file>sync.log</file>
+        <append>false</append>
+
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%-10.10thread] %-5level %-36logger{36} - %-7marker %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="TRACE">
         <appender-ref ref="STDOUT"/>
+        <appender-ref ref="FILE"/>
     </root>
 
+    <!--
     <logger name="de.ncoder.studipsync.Starter" level="INFO"/>
     <logger name="de.ncoder.studipsync.Syncer" level="INFO"/>
     <logger name="de.ncoder.studipsync.studip.jsoup.JsoupStudipAdapter" level="INFO"/>
     <logger name="de.ncoder.studipsync.ui.StandardUIAdapter.SWING" level="INFO"/>
     <logger name="de.ncoder.studipsync.ui.StandardUIAdapter.CMD" level="INFO"/>
     <logger name="de.ncoder.studipsync.storage.LocalStorage" level="INFO"/>
+    -->
 </configuration>

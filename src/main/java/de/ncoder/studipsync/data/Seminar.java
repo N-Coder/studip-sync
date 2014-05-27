@@ -3,125 +3,111 @@ package de.ncoder.studipsync.data;
 import de.ncoder.studipsync.studip.StudipException;
 
 import java.io.Serializable;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
-import static de.ncoder.studipsync.studip.StudipAdapter.PARAM_SEMINAR_SELECTION;
+public abstract class Seminar implements Serializable {
+	private final String hash;
+	private final String id;
+	private final String name;
+	private final String period;
 
-public class Seminar implements Serializable {
-    private static final Map<URL, Seminar> instances = new HashMap<>();
+	private boolean filesLoaded = false;
+	protected Date lastSync = null;
+	private final Map<String, StudipFile> files = new HashMap<>();
+	private final Collection<StudipFile> filesExt = Collections.unmodifiableCollection(files.values());
 
-    private final URL url;
-    private final Map<String, String> urlParams;
+	public Seminar(String hash, String id, String name, String period) {
+		this.hash = hash;
+		this.id = id;
+		this.name = name;
+		this.period = period;
+	}
 
-    private String name;
-    private String description;
+	public abstract String getDownloadURL();
 
-    private Seminar(URL url) {
-        urlParams = URLUtils.extractUrlParameters(url);
-        this.url = url;
-    }
+	public abstract String getDownloadURL(long changesAfterTimestamp);
 
-    public static Seminar getSeminar(URL url) {
-        if (!instances.containsKey(url)) {
-            instances.put(url, new Seminar(url));
-        }
-        return instances.get(url);
-    }
+	protected abstract Iterable<StudipFile> loadFiles() throws StudipException;
 
-    public static Seminar getSeminar(String url, String name, String description) throws StudipException {
-        try {
-            Seminar seminar = getSeminar(new URL(url));
-            seminar.setFullName(name);
-            seminar.setDescription(description);
-            return seminar;
-        } catch (MalformedURLException e) {
-            StudipException ex = new StudipException("Illegal URL " + url, e);
-            ex.put("seminar.url", url);
-            ex.put("seminar.name", name);
-            throw ex;
-        }
-    }
+	public Collection<StudipFile> getFiles() throws StudipException {
+		if (!filesLoaded) {
+			for (StudipFile studipFile : loadFiles()) {
+				files.put(studipFile.getHash(), studipFile);
+			}
+			filesLoaded = true;
+		}
+		return filesExt;
+	}
 
-    // ------------------------------------------------------------------------
+	public boolean hasChangedFiles() throws StudipException {
+		for (StudipFile studipFile : getFiles()) {
+			if (studipFile.isChanged()) {
+				return true;
+			}
+		}
+		return false;
+	}
 
-    public String getHash() {
-        String hash = urlParams.get(PARAM_SEMINAR_SELECTION);
-        return hash == null ? "?" + Objects.hashCode(name) + "?" : hash;
-    }
+	// ------------------------------------------------------------------------
 
-    public String getID() {
-        return name.substring(0, name.indexOf(" "));
-    }
+	public String getHash() {
+		return hash;
+	}
 
-    public String getType() {
-        int start = name.indexOf(" ") + 1;
-        int end = name.indexOf(": ", start);
-        if (start < 0 || end < 0) {
-            return getID();
-        }
-        return name.substring(start, end);
-    }
+	public String getID() {
+		return (id == null || id.isEmpty()) ? "#" + getHash().substring(0, 5) : id;
+	}
 
-    public String getName() {
-        return name.substring(name.indexOf(": ") + 2);
-    }
+	public String getFullName() {
+		return name;
+	}
 
-    public String getPeriod() {
-        return description.substring(0, description.indexOf(","));
-    }
+	public String getNr() {
+		return getID().replaceAll("[A-Za-z]*", "");
+	}
 
-    // --------------------------------
+	public String getType() {
+		return getID().replaceAll("[0-9]*", "");
+	}
 
-    public URL getUrl() {
-        return url;
-    }
+	public String getName() {
+		return getFullName().replaceAll("\\(.*\\)", "");
+	}
 
-    public String getFullName() {
-        return name;
-    }
+	public String getPeriod() {
+		return period;
+	}
 
-    public void setFullName(String name) {
-        this.name = name;
-    }
+	public Date getLastSyncTime() {
+		return lastSync;
+	}
 
-    public String getDescription() {
-        return description;
-    }
+	// ------------------------------------------------------------------------
 
-    public void setDescription(String description) {
-        this.description = description;
-    }
+	@Override
+	public String toString() {
+		return getID() + " " + getName() + " #" + getHash().substring(0, 5);
+	}
 
-    // ------------------------------------------------------------------------
+	@Override
+	public int hashCode() {
+		return getHash().hashCode();
+	}
 
-    @Override
-    public String toString() {
-        return String.format("'%s' (%s, #%s)", getFullName(), getDescription(), getHash().substring(0, 5));
-    }
-
-    @Override
-    public int hashCode() {
-        return getHash().hashCode();
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-        if (this == obj)
-            return true;
-        if (obj == null)
-            return false;
-        if (!(obj instanceof Seminar))
-            return false;
-        Seminar other = (Seminar) obj;
-        if (getHash() == null) {
-            if (other.getHash() != null)
-                return false;
-        } else if (!getHash().equals(other.getHash()))
-            return false;
-        return true;
-    }
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (!(obj instanceof Seminar))
+			return false;
+		Seminar other = (Seminar) obj;
+		if (getHash() == null) {
+			if (other.getHash() != null)
+				return false;
+		} else if (!getHash().equals(other.getHash()))
+			return false;
+		return true;
+	}
 }

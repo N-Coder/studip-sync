@@ -1,7 +1,33 @@
+/*
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2014 Niko Fink
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
 package de.ncoder.studipsync.storage;
 
-import de.ncoder.studipsync.data.Download;
 import de.ncoder.studipsync.data.Seminar;
+import de.ncoder.studipsync.data.StudipFile;
+import de.ncoder.studipsync.studip.StudipAdapter;
+import de.ncoder.studipsync.studip.StudipException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,250 +40,214 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.*;
 
-import static de.ncoder.studipsync.studip.StudipAdapter.ZIP_ENCODING;
-
 public class LocalStorage implements Storage {
-    private static final Logger log = LoggerFactory.getLogger(LocalStorage.class);
+	private static final Logger log = LoggerFactory.getLogger(LocalStorage.class);
 
-    private PathResolver resolverDelegate = StandardPathResolver.ByHash;
-    private final Path root;
-    private final List<StorageListener> listeners = new LinkedList<>();
-    private transient FileSystem underlyingFS;
+	public static final String ZIP_ENCODING = "Cp1252";
 
-    private LocalStorage(Path root) {
-        this.root = root;
-    }
+	private PathResolver resolverDelegate = StandardPathResolver.ByHash;
+	private final Path root;
+	private final List<StorageListener> listeners = new LinkedList<>();
+	private transient FileSystem underlyingFS;
 
-    public static LocalStorage openZip(Path zip) throws IOException {
-        try {
-            return openZip(new URI("jar", zip.toUri().toString(), ""));
-        } catch (URISyntaxException e) {
-            throw new IOException("Can't open zip file " + zip, e);
-        }
-    }
+	private LocalStorage(Path root) {
+		this.root = root;
+	}
 
-    public static LocalStorage openZip(URI uri) throws IOException {
-        FileSystem cache = FileSystems.newFileSystem(uri, zipFSOptions(true));
-        LocalStorage storage = new LocalStorage(cache.getPath("/"));
-        storage.underlyingFS = cache;
-        return storage;
-    }
+	public static LocalStorage openZip(Path zip) throws IOException {
+		try {
+			return openZip(new URI("jar", zip.toUri().toString(), ""));
+		} catch (URISyntaxException e) {
+			throw new IOException("Can't open zip file " + zip, e);
+		}
+	}
 
-    public static LocalStorage openDir(Path root) throws IOException {
-        if (!Files.isDirectory(root)) {
-            Files.createDirectories(root);
-        }
-        return new LocalStorage(root);
-    }
+	public static LocalStorage openZip(URI uri) throws IOException {
+		FileSystem cache = FileSystems.newFileSystem(uri, zipFSOptions(true));
+		LocalStorage storage = new LocalStorage(cache.getPath("/"));
+		storage.underlyingFS = cache;
+		return storage;
+	}
 
-    public static LocalStorage open(Path root) throws IOException {
-        if (root.toString().endsWith(".zip")) {
-            return openZip(root);
-        } else {
-            return openDir(root);
-        }
-    }
+	public static LocalStorage openDir(Path root) throws IOException {
+		if (!Files.isDirectory(root)) {
+			Files.createDirectories(root);
+		}
+		FileSystem cache = FileSystems.newFileSystem(root, null);
+		LocalStorage storage = new LocalStorage(root);
+		storage.underlyingFS = cache;
+		return storage;
+	}
 
-    @Override
-    public void close() throws IOException {
-        if (underlyingFS != null) {
-            underlyingFS.close();
-        }
-    }
+	public static LocalStorage open(Path root) throws IOException {
+		if (root.toString().endsWith(".zip")) {
+			return openZip(root);
+		} else {
+			return openDir(root);
+		}
+	}
 
-    // --------------------------------STORAGE---------------------------------
+	@Override
+	public void close() throws IOException {
+		if (underlyingFS != null) {
+			underlyingFS.close();
+		}
+	}
 
-    public void setPathResolverDelegate(PathResolver resolverDelegate) {
-        Objects.requireNonNull(resolverDelegate);
-        this.resolverDelegate = resolverDelegate;
-    }
+	// --------------------------------PUBLIC STORAGE--------------------------
 
-    public PathResolver getPathResolverDelegate() {
-        return resolverDelegate;
-    }
+	@Override
+	public void store(StudipAdapter adapter, Seminar seminar) throws IOException, StudipException {
+		store(seminar, adapter.startDownload(seminar.getDownloadURL()));
+	}
 
-    @Override
-    public Path resolve(Seminar seminar) {
-        return getPathResolverDelegate().resolve(getRoot(), seminar);
-    }
+	@Override
+	public void store(StudipAdapter adapter, Seminar seminar, long changesAfter) throws IOException, StudipException {
+		store(seminar, adapter.startDownload(seminar.getDownloadURL(changesAfter)));
+	}
 
-    @Override
-    public Path resolve(Download download) {
-        return getPathResolverDelegate().resolve(getRoot(), download);
-    }
+	private void store(final Seminar seminar, InputStream in) throws IOException {
+		Path tmp = Files.createTempFile("studip-seminar-" + seminar.getHash(), ".zip");
+		Files.copy(in, tmp, StandardCopyOption.REPLACE_EXISTING);
+		doStore(seminar, tmp);
+		Files.delete(tmp);
+	}
 
-    @Override
-    public Path resolve(Download download, Path srcFile) {
-        return getPathResolverDelegate().resolve(getRoot(), download, srcFile);
-    }
+	@Override
+	public void store(StudipAdapter adapter, StudipFile file) throws IOException, StudipException {
+		store(file, adapter.startDownload(file.getDownloadURL()));
+	}
 
-    @Override
-    public void store(Download download, InputStream dataSrc, boolean isDiff) throws IOException {
-        //TODO downloading should be handled externally
-        Path tmp = Files.createTempFile(download.getSeminar().getID() + "-", download.getFileName());
-        Files.copy(dataSrc, tmp, StandardCopyOption.REPLACE_EXISTING);
-        store(download, tmp, isDiff);
-        Files.delete(tmp);
-    }
+	@Override
+	public void store(StudipAdapter adapter, StudipFile file, long changesAfter) throws IOException, StudipException {
+		store(file, adapter.startDownload(file.getDownloadURL(changesAfter)));
+	}
 
-    @Override
-    public void store(Download download, Path dataSrc, boolean isDiff) throws IOException {
-        Path dstPath = resolve(download);
-        log.debug(download + " <<" + (isDiff ? "DIF" : "ABS") + "<< " + dataSrc);
-        if (!isDiff) {
-            delete(download, dstPath);
-        }
-        if (download.isFolder()) {
-            storeZipped(download, dataSrc);
-        } else {
-            storeFile(download, dataSrc, dstPath);
-        }
-    }
+	private void store(StudipFile file, InputStream in) throws IOException {
+		Path tmp = Files.createTempFile("studip-file-" + file.getHash(), '.' + file.getFileExtension());
+		Files.copy(in, tmp, StandardCopyOption.REPLACE_EXISTING);
+		doStore(file, tmp);
+		Files.delete(tmp);
+	}
 
-    private void delete(final Download download, Path path) throws IOException {
-        final Path parent = resolve(download);
-        log.debug("DEL: " + path);
-        if (Files.isDirectory(path)) {
-            Files.walkFileTree(path, new SimpleFileVisitor<Path>() {
-                @Override
-                public FileVisitResult visitFile(Path subpath, BasicFileAttributes attrs) throws IOException {
-                    Path relativeSubpath = subpath.relativize(parent);
-                    log.trace("DEL:     " + relativeSubpath);
-                    for (StorageListener l : listeners) {
-                        l.onDelete(download, relativeSubpath);
-                    }
-                    Files.delete(subpath);
-                    return FileVisitResult.CONTINUE;
-                }
+	// --------------------------------INTERNAL STORAGE------------------------
 
-                @Override
-                public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-                    Files.delete(dir);
-                    return FileVisitResult.CONTINUE;
-                }
-            });
-        } else if (Files.exists(path)) {
-            Path relativePath = path.relativize(parent);
-            for (StorageListener l : listeners) {
-                l.onDelete(download, relativePath);
-            }
-            Files.delete(path);
-        }
-    }
+	private void doStore(final Seminar seminar, Path srcZip) throws IOException {
+		if (Files.size(srcZip) <= 0) {
+			throw new IOException("Empty file");
+		}
+		iterateZip(srcZip, new SimpleFileVisitor<Path>() {
+			@Override
+			public FileVisitResult visitFile(Path path, BasicFileAttributes attr) throws IOException {
+				try {
+					doStore(findStudipFile(seminar, path), path);
+				} catch (StudipException e) {
+					throw new IOException(e);
+				}
+				return FileVisitResult.CONTINUE;
+			}
+		});
+	}
 
-    private void storeFile(final Download download, Path src, Path dst) throws IOException {
-        if (dst.getParent() != null) {
-            Files.createDirectories(dst.getParent());
-        }
-        if (!checkFilesEqual(src, dst)) {
-            log.trace("	" + src + " >> " + dst);
-            Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis()));
-            for (StorageListener l : listeners) {
-                l.onUpdate(download, dst, src);
-            }
-            Files.move(src, dst, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
-        }
-    }
+	private void doStore(final StudipFile file, Path src) throws IOException {
+		Path dst = resolve(file);
+		if (dst.getParent() != null) {
+			Files.createDirectories(dst.getParent());
+		}
+		if (file.isFolder()) {
+			iterateZip(src, new SimpleFileVisitor<Path>() {
+				@Override
+				public FileVisitResult visitFile(Path path, BasicFileAttributes attr) throws IOException {
+					try {
+						doStore(findStudipFile(file, path), path);
+					} catch (StudipException e) {
+						throw new IOException(e);
+					}
+					return FileVisitResult.CONTINUE;
+				}
+			});
+		} else {
+			Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis()));
+			for (StorageListener l : listeners) {
+				l.onUpdate(file, dst, src);
+			}
+			Files.move(src, dst, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
+		}
+	}
 
-    private void storeZipped(final Download download, Path srcZip) throws IOException {
-        if (Files.size(srcZip) <= 0) {
-            throw new IOException("Empty file");
-        }
-        try (FileSystem srcFS = FileSystems.newFileSystem(new URI("jar", srcZip.toUri().toString(), ""), zipFSOptions(false))) {
-            for (final Path srcRoot : srcFS.getRootDirectories()) {
-                Files.walkFileTree(srcRoot, new SimpleFileVisitor<Path>() {
-                    @Override
-                    public FileVisitResult visitFile(Path srcFile, BasicFileAttributes attr) throws IOException {
-                        storeFile(download, srcFile, resolve(download, srcFile));
-                        return FileVisitResult.CONTINUE;
-                    }
-                });
-            }
-        } catch (URISyntaxException e) {
-            throw new IOException("Can't open zip file " + srcZip, e);
-        }
-    }
+	private StudipFile findStudipFile(StudipFile parent, Path filePath) throws StudipException {
+		String path = parent.getPath() + filePath.toString();
+		for (StudipFile studipFile : parent.getChildren()) {
+			if (studipFile.getPath().endsWith(path)) {
+				return studipFile;
+			}
+		}
+		return null;
+	}
 
-    // ------------------------------------------------------------------------
+	private StudipFile findStudipFile(Seminar seminar, Path filePath) throws StudipException {
+		String path = filePath.toString().substring(1);
+		for (StudipFile studipFile : seminar.getFiles()) {
+			if (studipFile.getPath().endsWith(path)) {
+				return studipFile;
+			}
+		}
+		return null;
+	}
 
-    public static boolean checkFilesEqual(Path fileA, Path fileB) {
-        try {
-            if (!Files.exists(fileA) || !Files.exists(fileB)) {
-                return !Files.exists(fileA) && !Files.exists(fileB);
-            }
-            if (Files.size(fileA) != Files.size(fileB)) {
-                return false;
-            }
-            byte[] srcBuf = new byte[1024];
-            byte[] dstBuf = new byte[1024];
-            try (InputStream srcIn = Files.newInputStream(fileA); InputStream dstIn = Files.newInputStream(fileB)) {
-                if (srcIn.read(srcBuf) != dstIn.read(dstBuf)) {
-                    return false;
-                }
-                if (!Arrays.equals(srcBuf, dstBuf)) {
-                    return false;
-                }
-            }
-            return true;
-        } catch (IOException e) {
-            log.warn("Could not compare files " + fileA + " and " + fileB, e);
-            return false;
-        }
-    }
+	// ------------------------------------------------------------------------
 
-    // ------------------------------------------------------------------------
+	public void setPathResolverDelegate(PathResolver resolverDelegate) {
+		Objects.requireNonNull(resolverDelegate);
+		this.resolverDelegate = resolverDelegate;
+	}
 
-    @Override
-    public Path getRoot() {
-        return root;
-    }
+	public PathResolver getPathResolverDelegate() {
+		return resolverDelegate;
+	}
 
-    @Override
-    public boolean hasListener(StorageListener o) {
-        return listeners.contains(o);
-    }
+	@Override
+	public Path resolve(Seminar seminar) {
+		return getPathResolverDelegate().resolve(getRoot(), seminar);
+	}
 
-    @Override
-    public boolean registerListener(StorageListener e) {
-        return listeners.add(e);
-    }
+	@Override
+	public Path resolve(StudipFile studipFile) {
+		return getPathResolverDelegate().resolve(getRoot(), studipFile);
+	}
 
-    @Override
-    public boolean unregisterListener(StorageListener o) {
-        return listeners.remove(o);
-    }
+	// ------------------------------------------------------------------------
 
-    public static Map<String, Object> zipFSOptions(boolean create) {
-        Map<String, Object> options = new HashMap<>();
-        options.put("create", create + "");
-        options.put("encoding", ZIP_ENCODING);
-        return options;
-    }
+	@Override
+	public Path getRoot() {
+		return root;
+	}
 
-    // --------------------------------RESET-----------------------------------
+	@Override
+	public boolean registerListener(StorageListener e) {
+		return listeners.add(e);
+	}
 
-    public static void reset(Path cachePath, Path cookiesPath) throws IOException {
-        log.debug("Reset started");
-        if (cookiesPath != null && Files.exists(cookiesPath)) {
-            Files.delete(cookiesPath);
-        }
-        if (Files.isDirectory(cachePath)) {
-            Files.walkFileTree(cachePath, new SimpleFileVisitor<Path>() {
-                @Override
-                public FileVisitResult visitFile(Path subpath, BasicFileAttributes attrs) throws IOException {
-                    Files.delete(subpath);
-                    return FileVisitResult.CONTINUE;
-                }
+	@Override
+	public boolean unregisterListener(StorageListener o) {
+		return listeners.remove(o);
+	}
 
-                @Override
-                public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-                    Files.delete(dir);
-                    return FileVisitResult.CONTINUE;
-                }
-            });
-        } else if (Files.exists(cachePath)) {
-            Files.delete(cachePath);
-        }
-        log.info("Reset completed");
-    }
+	private void iterateZip(Path zip, FileVisitor<Path> visitor) throws IOException {
+		//try (FileSystem srcFS = FileSystems.newFileSystem(new URI("jar", zip.toUri().toString(), ""), zipFSOptions(false))) {
+		try (FileSystem srcFS = FileSystems.newFileSystem(zip, null)) {
+			for (final Path srcRoot : srcFS.getRootDirectories()) {
+				Files.walkFileTree(srcRoot, visitor);
+			}
+		}// catch (URISyntaxException e) {
+		//	throw new IOException("Can't open zip file " + zip, e);
+		//}
+	}
+
+	private static Map<String, Object> zipFSOptions(boolean create) {
+		Map<String, Object> options = new HashMap<>();
+		options.put("create", create + "");
+		options.put("encoding", ZIP_ENCODING);
+		return options;
+	}
 }
